@@ -160,10 +160,19 @@ class ReapTest(parameterized.TestCase):
   @parameterized.named_parameters(('int', 1), ('float', 1.), ('tuple', (1,)),
                                   ('enum', EnumTag.TAG))
   def test_should_reap_hashables(self, tag):
+
     def f(x):
       return sow(x, tag=tag, name='x')
 
     self.assertDictEqual(reap(f, tag=tag)(1.), {'x': 1.})
+
+  def test_should_reap_constant(self):
+
+    def f(x):
+      y = variable(10., name='y')
+      return x + y
+
+    self.assertDictEqual(reap_variables(f)(1.), {'y': 10.})
 
 
 class PlantTest(test_util.TestCase):
@@ -255,6 +264,16 @@ class PlantTest(test_util.TestCase):
 
     self.assertEqual(plant(f, tag=tag)({}, 1.), 1.)
     self.assertEqual(plant(f, tag=tag)({'x': 2.}, 1.), 2.)
+
+  def test_should_plant_constant(self):
+
+    def f(x):
+      y = variable(717, name='y')
+      x = variable(x, name='x')
+      return x + y
+
+    self.assertEqual(plant_variables(f)({}, 1.), 718.)
+    self.assertEqual(plant_variables(f)({'x': 2., 'y': 15.}, 1.), 17.)
 
 
 class HarvestTest(test_util.TestCase):
