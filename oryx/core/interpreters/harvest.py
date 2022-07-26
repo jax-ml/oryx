@@ -391,7 +391,7 @@ class HarvestTracer(jax_core.Tracer):
 @dataclasses.dataclass(frozen=True)
 class HarvestSettings:
   """Contains the settings for a HarvestTrace."""
-  tag: str
+  tag: Hashable
   blocklist: FrozenSet[str]
   allowlist: Union[FrozenSet[str], None]
   exclusive: bool
@@ -552,7 +552,7 @@ def reap_wrapper(trace: HarvestTrace, *args):
 
 def call_and_reap(f,
                   *,
-                  tag: str,
+                  tag: Hashable,
                   allowlist: Optional[Iterable[str]] = None,
                   blocklist: Iterable[str] = frozenset(),
                   exclusive: bool = False):
@@ -592,7 +592,7 @@ def call_and_reap(f,
 
 def reap(f,
          *,
-         tag: str,
+         tag: Hashable,
          allowlist: Optional[Iterable[str]] = None,
          blocklist: Iterable[str] = frozenset(),
          exclusive: bool = False):
@@ -927,7 +927,7 @@ def plant_wrapper(*args):
 
 def plant(f,
           *,
-          tag: str,
+          tag: Hashable,
           allowlist: Optional[Iterable[str]] = None,
           blocklist: Iterable[str] = frozenset(),
           exclusive: bool = False):
@@ -1133,7 +1133,7 @@ plant_custom_rules[lcf.cond_p] = _plant_cond_rule
 
 def harvest(f,
             *,
-            tag: str,
+            tag: Hashable,
             allowlist: Optional[Iterable[str]] = None,
             blocklist: Iterable[str] = frozenset(),
             exclusive: bool = False):
