@@ -131,6 +131,7 @@ reap(f, tag='intermediate')(5.)  # ==> {'y': 6.}
 * Planting values into a `pmap` is partially working. Harvest tries to plant all
   the values, assuming they have a leading map dimension.
 """
+from __future__ import annotations
 import collections
 import dataclasses
 import functools
@@ -183,16 +184,21 @@ def _sow_abstract_eval(*avals, **_):
   return avals
 
 
-@functools.partial(ad.deflinear, sow_p)
-def _sow_transpose(cts_in, *_, **__):
+def _sow_jvp(primals, tangents, **kwargs):
+  out_primals = sow_p.bind(*primals, **kwargs)
+  return out_primals, tangents
+ad.primitive_jvps[sow_p] = _sow_jvp
+
+
+def _sow_transpose(cts_in, *args, **kwargs):
+  del args, kwargs
   return cts_in
+ad.primitive_transposes[sow_p] = _sow_transpose
 
 
 def _sow_batch_rule(batched_args, batch_dims, **params):
   outs = sow_p.bind(*batched_args, **params)
   return outs, batch_dims
-
-
 batching.primitive_batchers[sow_p] = _sow_batch_rule
 xla.translations[sow_p] = lambda c, *args, **params: xc.ops.Tuple(c, args)
 
@@ -275,8 +281,8 @@ def nest(f, *, scope: str):
 
   Args:
     f: a function to be transformed
-    scope: a string that will act as the parent scope of all values tagged
-      in `f`.
+    scope: a string that will act as the parent scope of all values tagged in
+      `f`.
 
   Returns:
     A semantically identical function to `f`, but when harvested, uses nested
@@ -300,18 +306,18 @@ def nest(f, *, scope: str):
 class HarvestTrace(jax_core.Trace):
   """An evaluating trace that dispatches to a dynamic context."""
 
-  def pure(self, val: Value) -> 'HarvestTracer':
+  def pure(self, val: Value) -> HarvestTracer:
     return HarvestTracer(self, val)
 
-  def sublift(self, tracer: 'HarvestTracer') -> 'HarvestTracer':
+  def sublift(self, tracer: HarvestTracer) -> HarvestTracer:
     return self.pure(tracer.val)
 
-  def lift(self, val: Value) -> 'HarvestTracer':
+  def lift(self, val: Value) -> HarvestTracer:
     return self.pure(val)
 
   def process_primitive(
-      self, primitive: jax_core.Primitive, tracers: List['HarvestTracer'],
-      params: Dict[str, Any]) -> Union['HarvestTracer', List['HarvestTracer']]:
+      self, primitive: jax_core.Primitive, tracers: List[HarvestTracer],
+      params: Dict[str, Any]) -> Union[HarvestTracer, List[HarvestTracer]]:
     context = trace_util.get_dynamic_context(self)
     custom_rule = context.get_custom_rule(primitive)
     if custom_rule:
@@ -319,8 +325,8 @@ class HarvestTrace(jax_core.Trace):
     return self.default_process_primitive(primitive, tracers, params)
 
   def default_process_primitive(
-      self, primitive: jax_core.Primitive, tracers: List['HarvestTracer'],
-      params: Dict[str, Any]) -> Union['HarvestTracer', List['HarvestTracer']]:
+      self, primitive: jax_core.Primitive, tracers: List[HarvestTracer],
+      params: Dict[str, Any]) -> Union[HarvestTracer, List[HarvestTracer]]:
     context = trace_util.get_dynamic_context(self)
     vals = [t.val for t in tracers]
     if primitive is sow_p:
@@ -335,7 +341,7 @@ class HarvestTrace(jax_core.Trace):
     return out_tracers[0]
 
   def process_call(self, call_primitive: jax_core.Primitive, f: Any,
-                   tracers: List['HarvestTracer'], params: Dict[str, Any]):
+                   tracers: List[HarvestTracer], params: Dict[str, Any]):
     context = trace_util.get_dynamic_context(self)
     if call_primitive is nest_p:
       return context.process_nest(self, f, *tracers, **params)
@@ -353,7 +359,7 @@ class HarvestTrace(jax_core.Trace):
     return vals, todo
 
   def process_map(self, call_primitive: jax_core.Primitive, f: Any,
-                  tracers: List['HarvestTracer'], params: Dict[str, Any]):
+                  tracers: List[HarvestTracer], params: Dict[str, Any]):
     context = trace_util.get_dynamic_context(self)
     return context.process_higher_order_primitive(self, call_primitive, f,
                                                   tracers, params, True)
@@ -361,17 +367,27 @@ class HarvestTrace(jax_core.Trace):
   post_process_map = post_process_call
 
   def process_custom_jvp_call(self, primitive, fun, jvp, tracers):
-    # This implementation just drops the custom derivative rule.
-    # TODO(mattjj,sharadmv): don't drop the custom derivative rule
-    del primitive, jvp  # Unused.
-    return fun.call_wrapped(*tracers)
+    context = trace_util.get_dynamic_context(self)
+    return context.process_custom_jvp_call(self, primitive, fun, jvp, tracers)
+
+  def post_process_custom_jvp_call(self, out_tracers, jvp_was_run):
+    context = trace_util.get_dynamic_context(self)
+    return context.post_process_custom_jvp_call(self, out_tracers, jvp_was_run)
 
   def process_custom_vjp_call(self, primitive, fun, fwd, bwd, tracers,
                               out_trees):
-    # This implementation just drops the custom derivative rule.
-    # TODO(mattjj,sharadmv): don't drop the custom derivative rule
-    del primitive, fwd, bwd, out_trees  # Unused.
-    return fun.call_wrapped(*tracers)
+    context = trace_util.get_dynamic_context(self)
+    return context.process_custom_vjp_call(self, primitive, fun, fwd, bwd,
+                                           tracers, out_trees)
+
+  def post_process_custom_vjp_call(self, out_tracers, params):
+    context = trace_util.get_dynamic_context(self)
+    return context.post_process_custom_vjp_call(self, out_tracers, params)
+
+  def post_process_custom_vjp_call_fwd(self, out_tracers, out_trees):
+    context = trace_util.get_dynamic_context(self)
+    return context.post_process_custom_vjp_call_fwd(self, out_tracers,
+                                                    out_trees)
 
 
 class HarvestTracer(jax_core.Tracer):
@@ -429,8 +445,24 @@ class HarvestContext:
 
   def process_higher_order_primitive(self, trace: HarvestTrace,
                                      call_primitive: jax_core.Primitive, f: Any,
-                                     tracers: List['HarvestTracer'],
+                                     tracers: List[HarvestTracer],
                                      params: Dict[str, Any], is_map: bool):
+    raise NotImplementedError
+
+  def process_custom_jvp_call(self, trace, primitive, fun, jvp, tracers):
+    raise NotImplementedError
+
+  def post_process_custom_jvp_call(self, trace, out_tracers, jvp_was_run):
+    raise NotImplementedError
+
+  def process_custom_vjp_call(self, trace, primitive, fun, fwd, bwd, tracers,
+                              out_trees):
+    raise NotImplementedError
+
+  def post_process_custom_vjp_call(self, trace, out_tracers, params):
+    raise NotImplementedError
+
+  def post_process_custom_vjp_call_fwd(self, trace, out_tracers, out_trees):
     raise NotImplementedError
 
 
@@ -512,6 +544,82 @@ class ReapContext(HarvestContext):
           dict(name=k, tag=tag, tree=reap_tree, mode=metadata[k]['mode']))
     return out_tracers
 
+  def process_custom_jvp_call(self, trace, primitive, fun, jvp, tracers):
+    context = trace_util.get_dynamic_context(trace)
+    vals_in = [t.val for t in tracers]
+    fun, aux1 = reap_eval(fun, trace, context.settings)
+
+    @lu.transformation_with_aux
+    def _jvp_subtrace(main, *args):
+      trace = main.with_cur_sublevel()
+      in_tracers = jax_util.safe_map(trace.pure, args)
+      outs = yield in_tracers, {}
+      out_tracers = jax_util.safe_map(trace.full_raise, outs)
+      yield out_tracers, (None, None)
+
+    jvp, aux2 = _jvp_subtrace(jvp, trace.main)
+    out_flat = primitive.bind(fun, jvp, *vals_in)
+    fst, (out_tree, metadata) = lu.merge_linear_aux(aux1, aux2)
+    if fst:
+      out, reaps = tree_util.tree_unflatten(out_tree, out_flat)
+      out_tracers, reap_tracers = tree_util.tree_map(trace.pure, (out, reaps))
+      tag = context.settings.tag
+      for k, v in reap_tracers.items():
+        flat_reap_tracers, reap_tree = tree_util.tree_flatten(v)
+        trace.process_primitive(
+            sow_p, flat_reap_tracers,
+            dict(name=k, tag=tag, tree=reap_tree, mode=metadata[k]['mode']))
+    else:
+      out_tracers = jax_util.safe_map(trace.pure, out_flat)
+    return out_tracers
+
+  def post_process_custom_jvp_call(self, trace, out_tracers, jvp_was_run):
+    del jvp_was_run
+    vals = [t.val for t in out_tracers]
+    return vals, lambda vals: vals
+
+  def process_custom_vjp_call(self, trace, primitive, fun, fwd, bwd, tracers,
+                              out_trees):
+    context = trace_util.get_dynamic_context(trace)
+    vals_in = [t.val for t in tracers]
+    fun, aux1 = reap_eval(fun, trace, context.settings)
+
+    @lu.transformation_with_aux
+    def _fwd_subtrace(main, *args):
+      trace = main.with_cur_sublevel()
+      in_tracers = jax_util.safe_map(trace.pure, args)
+      outs = yield in_tracers, {}
+      out_tracers = jax_util.safe_map(trace.full_raise, outs)
+      yield out_tracers, (None, None)
+
+    fwd, aux2 = _fwd_subtrace(fwd, trace.main)
+    bwd, _ = reap_eval(bwd, trace, context.settings)
+    out_flat = primitive.bind(fun, fwd, bwd, *vals_in, out_trees=out_trees)
+    fst, (out_tree, metadata) = lu.merge_linear_aux(aux1, aux2)
+    if fst:
+      out, reaps = tree_util.tree_unflatten(out_tree, out_flat)
+      out_tracers, reap_tracers = tree_util.tree_map(trace.pure, (out, reaps))
+      tag = context.settings.tag
+      for k, v in reap_tracers.items():
+        flat_reap_tracers, reap_tree = tree_util.tree_flatten(v)
+        trace.process_primitive(
+            sow_p, flat_reap_tracers,
+            dict(name=k, tag=tag, tree=reap_tree, mode=metadata[k]['mode']))
+    else:
+      out_tracers = jax_util.safe_map(trace.pure, out_flat)
+    return out_tracers
+
+  def post_process_custom_vjp_call(self, trace, out_tracers, params):
+    del params
+    vals = [t.val for t in out_tracers]
+    return vals, lambda vals: vals
+
+  def post_process_custom_vjp_call_fwd(self, trace, out_tracers, out_trees):
+    vals = [t.val for t in out_tracers]
+    todo = lambda vals: vals
+    bwd_transform = lambda bwd: bwd
+    return vals, todo, bwd_transform
+
 
 @lu.transformation
 def reap_function(main: jax_core.MainTrace, settings: HarvestSettings,
@@ -566,8 +674,8 @@ def call_and_reap(f,
       enforce that only sows with names in the allowlist will be reaped.
     blocklist: an optional sequence of string names, which if provided will
       enforce that only no sows with names in the blocklist will be reaped.
-    exclusive: determines whether or not to execute in "exclusive" mode
-      where other tags are removed during execution.
+    exclusive: determines whether or not to execute in "exclusive" mode where
+      other tags are removed during execution.
 
   Returns:
     A new function that executes the original and returns its sown values as
@@ -606,8 +714,8 @@ def reap(f,
       enforce that only sows with names in the allowlist will be reaped.
     blocklist: an optional sequence of string names, which if provided will
       enforce that only no sows with names in the blocklist will be reaped.
-    exclusive: determines whether or not to execute in "exclusive" mode
-      where other tags are removed during execution.
+    exclusive: determines whether or not to execute in "exclusive" mode where
+      other tags are removed during execution.
 
   Returns:
     A new function that executes the original and returns its sown values.
@@ -898,6 +1006,53 @@ class PlantContext(HarvestContext):
     out_vals = call_primitive.bind(f, *all_vals, name=name, **params)
     return jax_util.safe_map(trace.pure, out_vals)
 
+  def process_custom_jvp_call(self, trace, primitive, fun, jvp, tracers):
+    vals_in = [t.val for t in tracers]
+
+    @lu.transformation
+    def _subtrace(main: jax_core.MainTrace, *args: Iterable[Any]):
+      trace = main.with_cur_sublevel()
+      in_tracers = jax_util.safe_map(trace.pure, args)
+      outs = yield in_tracers, {}
+      yield jax_util.safe_map(trace.full_raise, outs)
+    fun = _subtrace(fun, trace.main)
+    jvp = _subtrace(jvp, trace.main)
+    out_flat = primitive.bind(fun, jvp, *vals_in)
+    out_tracers = jax_util.safe_map(trace.pure, out_flat)
+    return out_tracers
+
+  def post_process_custom_jvp_call(self, trace, out_tracers, jvp_was_run):
+    vals = [t.val for t in out_tracers]
+    return vals, lambda vals: vals
+
+  def process_custom_vjp_call(self, trace, primitive, fun, fwd, bwd, tracers,
+                              out_trees):
+    vals_in = [t.val for t in tracers]
+
+    @lu.transformation
+    def _subtrace(main: jax_core.MainTrace, *args: Iterable[Any]):
+      trace = main.with_cur_sublevel()
+      in_tracers = jax_util.safe_map(trace.pure, args)
+      outs = yield in_tracers, {}
+      yield jax_util.safe_map(trace.full_raise, outs)
+
+    fun = _subtrace(fun, trace.main)
+    fwd = _subtrace(fwd, trace.main)
+    # We don't need to subtrace the `bwd` since it's triggered in another trace.
+    out_flat = primitive.bind(fun, fwd, bwd, *vals_in, out_trees=out_trees)
+    return jax_util.safe_map(trace.pure, out_flat)
+
+  def post_process_custom_vjp_call(self, trace, out_tracers, params):
+    del params
+    vals = [t.val for t in out_tracers]
+    return vals, lambda vals: vals
+
+  def post_process_custom_vjp_call_fwd(self, trace, out_tracers, out_trees):
+    vals = [t.val for t in out_tracers]
+    todo = lambda vals: vals
+    bwd_transform = lambda bwd: bwd
+    return vals, todo, bwd_transform
+
 
 @lu.transformation
 def plant_function(main: jax_core.MainTrace, settings: HarvestSettings,
@@ -941,8 +1096,8 @@ def plant(f,
       enforce that only sows with names in the allowlist will be planted.
     blocklist: an optional sequence of string names, which if provided will
       enforce that only no sows with names in the blocklist will be planted.
-    exclusive: determines whether or not to execute in "exclusive" mode
-      where other tags are removed during execution.
+    exclusive: determines whether or not to execute in "exclusive" mode where
+      other tags are removed during execution.
 
   Returns:
     A new function that takes in a dictionary of planted values in addition to
@@ -1117,10 +1272,7 @@ def _plant_cond_rule(trace, *tracers, branches, linear):
   in_tree = tree_util.tree_structure(ops_avals)
   new_branch_jaxprs, consts, _ = (
       lcf._initial_style_jaxprs_with_common_consts(  # pylint: disable=protected-access
-          planted_branches,
-          in_tree,
-          ops_avals,
-          lax.cond_p.name))
+          planted_branches, in_tree, ops_avals, lax.cond_p.name))
   out = lax.cond_p.bind(
       index_val,
       *(tuple(consts) + ops_vals),

@@ -34,6 +34,7 @@ import os
 from absl.testing import absltest
 from absl.testing import parameterized
 import jax
+from jax import config
 from jax import lax
 import jax.numpy as jnp
 import numpy as np
@@ -41,6 +42,9 @@ import numpy as np
 from oryx.core import trace_util
 from oryx.core.interpreters import harvest
 from oryx.internal import test_util
+
+
+config.update('jax_traceback_filtering', 'off')
 
 sow = harvest.sow
 reap = harvest.reap
@@ -174,6 +178,132 @@ class ReapTest(parameterized.TestCase):
 
     self.assertDictEqual(reap_variables(f)(1.), {'y': 10.})
 
+  def test_reap_doesnt_clobber_custom_jvp_rule(self):
+
+    @jax.custom_jvp
+    def f(x):
+      return jnp.sin(x)
+
+    @f.defjvp
+    def f_jvp(xs, ts):
+      (x,), (t,) = xs, ts
+      return x, t * 2.
+
+    (_, out_tangent), _ = call_and_reap_variables(
+        lambda x, t: jax.jvp(f, (x,), (t,)))(2., 1.)
+    self.assertEqual(out_tangent, 2.)
+    _, out_tangents = jax.jvp(call_and_reap_variables(f), (2.,), (1.,))
+    out_tangent, _ = out_tangents
+    self.assertEqual(out_tangent, 2.)
+
+  def test_can_reap_from_custom_jvp_function(self):
+
+    @jax.custom_jvp
+    def f(x):
+      variable(x * 2., name='x')
+      return jnp.sin(x)
+
+    @f.defjvp
+    def f_jvp(xs, ts):
+      (x,), (t,) = xs, ts
+      return x, t * 2.
+
+    self.assertDictEqual(reap_variables(f)(2.), dict(x=4.))
+
+  def test_can_reap_from_jvp_of_custom_jvp_function(self):
+
+    @jax.custom_jvp
+    def f(x):
+      return jnp.sin(x)
+
+    @f.defjvp
+    def f_jvp(xs, ts):
+      (x,), (t,) = xs, ts
+      variable(x * 2., name='x')
+      return x, t * 2.
+
+    (_, primal_reaps), (_, tangent_reaps) = jax.jvp(
+        call_and_reap_variables(f), (2.,), (1.,))
+    self.assertDictEqual(primal_reaps, dict(x=4.))
+    self.assertDictEqual(tangent_reaps, dict(x=0.))
+    reaps = reap_variables(lambda x, t: jax.jvp(f, (x,), (t,)))(2., 1.)
+    self.assertDictEqual(reaps, dict(x=4.))
+
+  def test_reap_doesnt_clobber_custom_vjp_rule(self):
+
+    @jax.custom_vjp
+    def f(x):
+      return jnp.sin(x)
+
+    def f_fwd(x):
+      return jnp.sin(x), x
+
+    def f_bwd(x, g):
+      return (x * g,)
+
+    f.defvjp(f_fwd, f_bwd)
+
+    _, f_vjp = jax.vjp(call_and_reap_variables(f), 2.)
+    self.assertTupleEqual(f_vjp((1., {})), (2.,))
+
+    _, f_vjp = jax.vjp(f, 2.)
+    out, _ = call_and_reap_variables(f_vjp)(1.)
+    self.assertTupleEqual(out, (2.,))
+
+  def test_can_reap_from_custom_vjp_function(self):
+
+    @jax.custom_vjp
+    def f(x):
+      variable(x * 2., name='x')
+      return jnp.sin(x)
+
+    def f_fwd(x):
+      return jnp.sin(x), x
+
+    def f_bwd(x, g):
+      return (x * g,)
+
+    f.defvjp(f_fwd, f_bwd)
+
+    self.assertDictEqual(reap_variables(f)(2.), dict(x=4.))
+
+  def test_can_reap_from_fwd_of_custom_vjp_function(self):
+
+    @jax.custom_vjp
+    def f(x):
+      return jnp.sin(x)
+
+    def f_fwd(x):
+      variable(x * 2., name='x')
+      return jnp.sin(x), x
+
+    def f_bwd(x, g):
+      return (x * g,)
+
+    f.defvjp(f_fwd, f_bwd)
+
+    reaps = reap_variables(lambda x: jax.vjp(f, x)[0])(2.)
+    self.assertDictEqual(reaps, dict(x=4.))
+
+  def test_can_reap_from_bwd_of_custom_vjp_function(self):
+
+    @jax.custom_vjp
+    def f(x):
+      return jnp.sin(x)
+
+    def f_fwd(x):
+      return jnp.sin(x), x
+
+    def f_bwd(x, g):
+      variable(x * 2., name='x')
+      return (x * g,)
+
+    f.defvjp(f_fwd, f_bwd)
+
+    _, f_vjp = jax.vjp(f, 2.)
+    reaps = reap_variables(f_vjp)(2.)
+    self.assertDictEqual(reaps, dict(x=4.))
+
 
 class PlantTest(test_util.TestCase):
 
@@ -274,6 +404,131 @@ class PlantTest(test_util.TestCase):
 
     self.assertEqual(plant_variables(f)({}, 1.), 718.)
     self.assertEqual(plant_variables(f)({'x': 2., 'y': 15.}, 1.), 17.)
+
+  def test_plant_doesnt_clobber_custom_jvp_rule(self):
+
+    @jax.custom_jvp
+    def f(x):
+      return jnp.sin(x)
+
+    @f.defjvp
+    def f_jvp(xs, ts):
+      (x,), (t,) = xs, ts
+      return x, t * 2.
+
+    _, out_tangents = jax.jvp(plant_variables(f), (
+        dict(y=2.), 2.,), (dict(y=1.), 1.,))
+    self.assertEqual(out_tangents, 2.)
+
+    _, out_tangents = plant_variables(
+        lambda x, t: jax.jvp(f, (x,), (t,)))(dict(y=2.), 2., 1.)
+    self.assertEqual(out_tangents, 2.)
+
+  def test_can_plant_into_custom_jvp_function(self):
+
+    @jax.custom_jvp
+    def f(x):
+      y = variable(x * 2., name='y')
+      return y + jnp.sin(x)
+
+    @f.defjvp
+    def f_jvp(xs, ts):
+      (x,), (t,) = xs, ts
+      return x, t * 2.
+
+    self.assertEqual(plant_variables(f)(dict(y=2.), 3.), 2. + np.sin(3.))
+
+  def test_can_plant_into_jvp_of_custom_jvp_function_unimplemented(self):
+
+    @jax.custom_jvp
+    def f(x):
+      return jnp.sin(x)
+
+    @f.defjvp
+    def f_jvp(xs, ts):
+      (x,), (t,) = xs, ts
+      y = variable(x * 2., name='y')
+      return x + y, t * 2. + y
+
+    # Input planted tangent is ignored!
+    out_primals, out_tangents = jax.jvp(
+        plant_variables(f), (dict(y=0.12), 3.), (dict(y=1.23), 1.))
+    self.assertEqual(out_primals, 0.12 + 3.)
+    self.assertEqual(out_tangents, 0.12 + 2.)
+
+  def test_plant_doesnt_clobber_custom_vjp_rule(self):
+
+    @jax.custom_vjp
+    def f(x):
+      return jnp.sin(x)
+
+    def f_fwd(x):
+      return jnp.sin(x), x
+
+    def f_bwd(x, g):
+      return (x * g,)
+
+    f.defvjp(f_fwd, f_bwd)
+
+    _, f_vjp = jax.vjp(plant_variables(f), {}, 2.)
+    self.assertTupleEqual(f_vjp(1.,), ({}, 2.))
+
+    _, f_vjp = jax.vjp(f, 2.)
+    self.assertTupleEqual(plant_variables(f_vjp)({}, 1.), (2.,))
+
+  def test_can_plant_into_custom_vjp_function(self):
+
+    @jax.custom_vjp
+    def f(x):
+      y = variable(x * 2., name='y')
+      return y + jnp.sin(x)
+
+    def f_fwd(x):
+      return jnp.sin(x), x
+
+    def f_bwd(x, g):
+      return (x * g,)
+
+    f.defvjp(f_fwd, f_bwd)
+
+    self.assertEqual(plant_variables(f)(dict(y=2.), 3.), 2. + np.sin(3.))
+
+  def test_can_plant_from_fwd_of_custom_vjp_function(self):
+
+    @jax.custom_vjp
+    def f(x):
+      return jnp.sin(x)
+
+    def f_fwd(x):
+      y = variable(x * 2., name='y')
+      return jnp.sin(y), x
+
+    def f_bwd(x, g):
+      return (x * g,)
+
+    f.defvjp(f_fwd, f_bwd)
+    out = plant_variables(lambda x: jax.vjp(f, x)[0])(dict(y=2.), 2.)
+    self.assertEqual(out, np.sin(2.))
+
+  def test_can_plant_from_bwd_of_custom_vjp_function(self):
+
+    @jax.custom_vjp
+    def f(x):
+      return jnp.sin(x)
+
+    def f_fwd(x):
+      return jnp.sin(x), x
+
+    def f_bwd(x, g):
+      y = variable(x * 2., name='y')
+      return (y * g,)
+
+    f.defvjp(f_fwd, f_bwd)
+
+    out_primal, f_vjp = jax.vjp(f, 2.)
+    self.assertEqual(out_primal, np.sin(2.))
+    out = plant_variables(f_vjp)(dict(y=1.23), 1.)
+    self.assertTupleEqual(out, (1.23,))
 
 
 class HarvestTest(test_util.TestCase):
@@ -528,12 +783,12 @@ class ControlFlowTest(test_util.TestCase):
 
       return lax.cond(pred, true_fun, false_fun, x)
 
-    with self.assertRaisesRegex(
-        ValueError, 'Mismatched shape between branches: \'x\'.'):
+    with self.assertRaisesRegex(ValueError,
+                                'Mismatched shape between branches: \'x\'.'):
       reap_variables(f3)(True, 1.)
 
-    with self.assertRaisesRegex(
-        ValueError, 'Mismatched shape between branches: \'x\'.'):
+    with self.assertRaisesRegex(ValueError,
+                                'Mismatched shape between branches: \'x\'.'):
       plant_variables(f3)({}, True, 1.)
 
   def test_can_reap_values_from_either_branch_of_cond(self):
@@ -593,6 +848,7 @@ class ControlFlowTest(test_util.TestCase):
       def branch3(x):
         x = variable(x + 3., name='x')
         return x + 4.
+
       return lax.switch(index, (branch1, branch2, branch3), x)
 
     out, reaps = call_and_reap_variables(f)(0, 1.)
@@ -622,6 +878,7 @@ class ControlFlowTest(test_util.TestCase):
       def branch3(x):
         x = variable(x + 3., name='x')
         return x + 4.
+
       return lax.switch(index, (branch1, branch2, branch3), x)
 
     out = plant_variables(f)(dict(x=4.), 0, 1.)
