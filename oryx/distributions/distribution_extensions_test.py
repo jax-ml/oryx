@@ -121,6 +121,14 @@ class DistributionsExtensionsTest(test_util.TestCase):
         p.log_prob(sample(random.PRNGKey(0))),
         ppl.log_prob(sample)(sample(random.PRNGKey(0))))
 
+  def test_discrete_grad(self):
+
+    def model(x, k):
+      c = ppl.random_variable(tfd.Categorical(logits=x), name='x')(k)
+      return x[c]
+
+    jax.grad(model)(jnp.zeros(3), random.PRNGKey(0))
+
   def test_joint_distribution(self):
 
     def model(key):
