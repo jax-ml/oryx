@@ -258,7 +258,13 @@ def _tie_all_transpose(cts_in, *args, **params):
   return cts_in
 
 
-ad.deflinear(tie_all_p, _tie_all_transpose)
+def _tie_all_jvp(primals, tangents, **params):
+  del params
+  return primals, tangents
+
+
+ad.primitive_jvps[tie_all_p] = _tie_all_jvp
+ad.primitive_transposes[tie_all_p] = _tie_all_transpose
 batching.primitive_batchers[tie_all_p] = _tie_all_batch_rule
 
 
