@@ -145,7 +145,6 @@ from jax import lax
 from jax import linear_util as lu
 from jax import tree_util
 from jax import util as jax_util
-from jax._src import ad_checkpoint
 from jax._src.lax import control_flow as lcf
 from jax.interpreters import ad
 from jax.interpreters import batching
@@ -175,48 +174,31 @@ sow_p = jax_core.Primitive('sow')
 sow_p.multiple_results = True
 
 
-class _SowEffect:
-  __repr__ = lambda _: 'Sow'
-
-
-SowEffect = _SowEffect()
-
-ad_checkpoint.remat_allowed_effects.add(SowEffect)
-lcf.allowed_effects.add(SowEffect)
-mlir.lowerable_effects.add(SowEffect)
-
-
 @sow_p.def_impl
 def _sow_impl(*args, **_):
   return args
 
 
-@sow_p.def_effectful_abstract_eval
+@sow_p.def_abstract_eval
 def _sow_abstract_eval(*avals, **_):
-  return avals, {SowEffect}
+  return avals
 
 
 def _sow_jvp(primals, tangents, **kwargs):
   out_primals = sow_p.bind(*primals, **kwargs)
   return out_primals, tangents
-
-
 ad.primitive_jvps[sow_p] = _sow_jvp
 
 
 def _sow_transpose(cts_in, *args, **kwargs):
   del args, kwargs
   return cts_in
-
-
 ad.primitive_transposes[sow_p] = _sow_transpose
 
 
 def _sow_batch_rule(batched_args, batch_dims, **params):
   outs = sow_p.bind(*batched_args, **params)
   return outs, batch_dims
-
-
 batching.primitive_batchers[sow_p] = _sow_batch_rule
 xla.translations[sow_p] = lambda c, *args, **params: xc.ops.Tuple(c, args)
 
@@ -972,41 +954,6 @@ def _reap_cond_rule(trace, *tracers, branches, linear):
 
 reap_custom_rules[lcf.cond_p] = _reap_cond_rule
 
-
-def _reap_checkpoint_rule(trace, *tracers, jaxpr, policy, prevent_cse,
-                          differentiated):
-  """Reap checkpoint rule."""
-  invals = [t.val for t in tracers]
-  context = trace_util.get_dynamic_context(trace)
-  settings = context.settings
-  reap_settings = dict(
-      tag=settings.tag,
-      allowlist=settings.allowlist,
-      blocklist=settings.blocklist,
-      exclusive=settings.exclusive)
-  closed_jaxpr = jax_core.ClosedJaxpr(jaxpr, ())
-  reap_metadata = _get_harvest_metadata(closed_jaxpr, settings, *tracers)
-  remat_fun = jax_core.jaxpr_as_fun(closed_jaxpr)
-  reaped_remat_fun = call_and_reap(remat_fun, **reap_settings)
-  reap_jaxpr, consts, out_tree = lcf._initial_style_jaxpr(  # pylint: disable=protected-access
-      reaped_remat_fun, tree_util.tree_structure(invals),
-      tuple(t.aval for t in tracers))
-  outvals = ad_checkpoint.remat_p.bind(
-      *consts,
-      *invals,
-      jaxpr=reap_jaxpr.jaxpr,
-      policy=policy,
-      prevent_cse=prevent_cse,
-      differentiated=differentiated)
-  outvals = jax_util.safe_map(trace.pure, outvals)
-  out, reaps = tree_util.tree_unflatten(out_tree, outvals)
-  for k, v in reaps.items():
-    sow(v, name=k, tag=settings.tag, mode=reap_metadata[k]['mode'])
-  return out
-
-
-reap_custom_rules[ad_checkpoint.remat_p] = _reap_checkpoint_rule
-
 plant_custom_rules = {}
 
 
@@ -1068,7 +1015,6 @@ class PlantContext(HarvestContext):
       in_tracers = jax_util.safe_map(trace.pure, args)
       outs = yield in_tracers, {}
       yield jax_util.safe_map(trace.full_raise, outs)
-
     fun = _subtrace(fun, trace.main)
     jvp = _subtrace(jvp, trace.main)
     out_flat = primitive.bind(fun, jvp, *vals_in)
@@ -1336,38 +1282,6 @@ def _plant_cond_rule(trace, *tracers, branches, linear):
 
 
 plant_custom_rules[lcf.cond_p] = _plant_cond_rule
-
-
-def _plant_checkpoint_rule(trace, *tracers, jaxpr, policy, prevent_cse,
-                           differentiated):
-  """Plant checkpoint rule."""
-  invals = [t.val for t in tracers]
-  context = trace_util.get_dynamic_context(trace)
-  settings = context.settings
-  plant_settings = dict(
-      tag=settings.tag,
-      allowlist=settings.allowlist,
-      blocklist=settings.blocklist,
-      exclusive=settings.exclusive)
-  closed_jaxpr = jax_core.ClosedJaxpr(jaxpr, ())
-  plants = context.plants
-  remat_fun = jax_core.jaxpr_as_fun(closed_jaxpr)
-  planted_remat_fun = functools.partial(
-      plant(remat_fun, **plant_settings), plants)
-  plant_jaxpr, consts, _ = lcf._initial_style_jaxpr(  # pylint: disable=protected-access
-      planted_remat_fun, tree_util.tree_structure(invals),
-      tuple(t.aval for t in tracers))
-  outvals = ad_checkpoint.remat_p.bind(
-      *consts,
-      *invals,
-      jaxpr=plant_jaxpr.jaxpr,
-      policy=policy,
-      prevent_cse=prevent_cse,
-      differentiated=differentiated)
-  return jax_util.safe_map(trace.pure, outvals)
-
-
-plant_custom_rules[ad_checkpoint.remat_p] = _plant_checkpoint_rule
 
 
 def harvest(f,

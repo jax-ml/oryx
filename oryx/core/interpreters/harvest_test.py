@@ -34,7 +34,6 @@ import os
 from absl.testing import absltest
 from absl.testing import parameterized
 import jax
-from jax import ad_checkpoint
 from jax import config
 from jax import lax
 import jax.numpy as jnp
@@ -43,6 +42,7 @@ import numpy as np
 from oryx.core import trace_util
 from oryx.core.interpreters import harvest
 from oryx.internal import test_util
+
 
 config.update('jax_traceback_filtering', 'off')
 
@@ -189,8 +189,8 @@ class ReapTest(parameterized.TestCase):
       (x,), (t,) = xs, ts
       return x, t * 2.
 
-    (_, out_tangent
-    ), _ = call_and_reap_variables(lambda x, t: jax.jvp(f, (x,), (t,)))(2., 1.)
+    (_, out_tangent), _ = call_and_reap_variables(
+        lambda x, t: jax.jvp(f, (x,), (t,)))(2., 1.)
     self.assertEqual(out_tangent, 2.)
     _, out_tangents = jax.jvp(call_and_reap_variables(f), (2.,), (1.,))
     out_tangent, _ = out_tangents
@@ -304,41 +304,6 @@ class ReapTest(parameterized.TestCase):
     reaps = reap_variables(f_vjp)(2.)
     self.assertDictEqual(reaps, dict(x=4.))
 
-  def test_reap_of_checkpoint(self):
-
-    @ad_checkpoint.checkpoint
-    def f(x):
-      variable(x, name='x')
-      return x
-
-    reaps = reap_variables(f)(2.)
-    self.assertDictEqual(reaps, dict(x=2.))
-
-  def test_reap_of_grad_of_checkpoint(self):
-
-    @ad_checkpoint.checkpoint
-    def f(x):
-      variable(x, name='x')
-      return x
-
-    reaps = reap_variables(jax.grad(f))(2.)
-    self.assertDictEqual(reaps, dict(x=2.))
-
-  def test_reap_of_grad_of_nested_checkpoint(self):
-
-    @ad_checkpoint.checkpoint
-    def f(x):
-
-      @ad_checkpoint.checkpoint
-      def g(x):
-        variable(x, name='x')
-        return x
-
-      return g(x)
-
-    reaps = reap_variables(jax.grad(f))(3.)
-    self.assertDictEqual(reaps, dict(x=3.))
-
 
 class PlantTest(test_util.TestCase):
 
@@ -451,18 +416,12 @@ class PlantTest(test_util.TestCase):
       (x,), (t,) = xs, ts
       return x, t * 2.
 
-    _, out_tangents = jax.jvp(
-        plant_variables(f), (
-            dict(y=2.),
-            2.,
-        ), (
-            dict(y=1.),
-            1.,
-        ))
+    _, out_tangents = jax.jvp(plant_variables(f), (
+        dict(y=2.), 2.,), (dict(y=1.), 1.,))
     self.assertEqual(out_tangents, 2.)
 
-    _, out_tangents = plant_variables(lambda x, t: jax.jvp(f, (x,), (t,)))(
-        dict(y=2.), 2., 1.)
+    _, out_tangents = plant_variables(
+        lambda x, t: jax.jvp(f, (x,), (t,)))(dict(y=2.), 2., 1.)
     self.assertEqual(out_tangents, 2.)
 
   def test_can_plant_into_custom_jvp_function(self):
@@ -571,39 +530,6 @@ class PlantTest(test_util.TestCase):
     out = plant_variables(f_vjp)(dict(y=1.23), 1.)
     self.assertTupleEqual(out, (1.23,))
 
-  def test_plant_of_checkpoint(self):
-
-    @ad_checkpoint.checkpoint
-    def f(x):
-      return variable(x, name='x')
-
-    self.assertEqual(plant_variables(f)(dict(x=3.), 2.), 3.)
-
-  def test_grad_of_plant_of_checkpoint(self):
-
-    @ad_checkpoint.checkpoint
-    def f(x):
-      y = variable(x * 2., name='y')
-      return y**2.
-
-    self.assertEqual(jax.grad(f)(2.), 16.)  # 4x^2 -> 8x
-    self.assertEqual(jax.grad(plant_variables(f))(dict(y=3.), 2.), dict(y=6.))
-
-  def test_grad_plant_of_nested_checkpoint(self):
-
-    @ad_checkpoint.checkpoint
-    def f(x):
-
-      @ad_checkpoint.checkpoint
-      def g(x):
-        y = variable(x * 2., name='y')
-        return y**2.
-
-      return g(x)
-
-    self.assertEqual(jax.grad(f)(2.), 16.)
-    self.assertEqual(jax.grad(plant_variables(f))(dict(y=3.), 2.), dict(y=6.))
-
 
 class HarvestTest(test_util.TestCase):
 
@@ -689,13 +615,10 @@ class ControlFlowTest(test_util.TestCase):
   def test_harvest_append_mode_in_nested_scan_and_cond_should_accumulate(self):
 
     def body(carry, x):
-
       def _t(x):
         return variable(x + carry, name='x', mode='append')
-
       def _f(x):
         return variable(x, name='x', mode='append')
-
       x = lax.cond(True, _t, _f, x)
       return x, x
 
