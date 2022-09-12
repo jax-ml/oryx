@@ -102,7 +102,7 @@ def log_prob_jaxpr(jaxpr, constcells, flat_incells, flat_outcells):
       # We are unable to compute a log_prob for this primitive.
       return failed_log_prob
     if new_log_prob is not None:
-      cells = [env.read(var) for var in eqn.outvars]
+      cells = [env.read(var) for var in eqn.invars]
       ildjs = sum([cell.ildj.sum() for cell in cells if cell.top()])
       return curr_log_prob + new_log_prob + ildjs
     return curr_log_prob

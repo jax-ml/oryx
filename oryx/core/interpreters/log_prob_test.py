@@ -128,6 +128,15 @@ class LogProbTest(test_util.TestCase):
     f_lp = log_prob(f)
     self.assertEqual(f_lp(0.1, 1.0), bd.Normal(0., 1.).log_prob(-0.9))
 
+  def test_multiple_equations(self):
+
+      def f(rng):
+          return jax.jit(random_normal)(rng) * 2
+
+      dist = bd.Normal(0., 2.)
+      f_lp = log_prob(f)
+      self.assertEqual(f_lp(0.1), dist.log_prob(0.1))
+
   def test_log_prob_in_call(self):
 
     def f(rng):
