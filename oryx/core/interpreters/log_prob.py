@@ -103,7 +103,12 @@ def log_prob_jaxpr(jaxpr, constcells, flat_incells, flat_outcells):
       return failed_log_prob
     if new_log_prob is not None:
       cells = [env.read(var) for var in eqn.outvars]
-      ildjs = sum([cell.ildj.sum() for cell in cells if cell.top()])
+      # If the primitive is a sampling primitive, make sure to add the ILDJ
+      # terms.
+      if eqn.primitive in log_prob_registry:
+        ildjs = sum([cell.ildj.sum() for cell in cells if cell.top()])
+      else:
+        ildjs = 0.
       return curr_log_prob + new_log_prob + ildjs
     return curr_log_prob
 

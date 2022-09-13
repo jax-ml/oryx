@@ -19,7 +19,7 @@ from jax import abstract_arrays
 from jax import core as jax_core
 from jax import linear_util as lu
 from jax import random
-import jax.numpy as np
+import jax.numpy as jnp
 
 from oryx import bijectors as bb
 from oryx import distributions as bd
@@ -46,7 +46,7 @@ random_normal_p.def_impl(random_normal_impl)
 
 def random_normal_abstract(_, name=None):
   del name
-  return abstract_arrays.ShapedArray((), np.float32)
+  return abstract_arrays.ShapedArray((), jnp.float32)
 
 
 random_normal_p.def_abstract_eval(random_normal_abstract)
@@ -93,7 +93,7 @@ class LogProbTest(test_util.TestCase):
   def test_log_normal_log_prob(self):
 
     def f(rng):
-      return np.exp(random_normal(rng))
+      return jnp.exp(random_normal(rng))
 
     dist = bd.TransformedDistribution(bd.Normal(0., 1.), bb.Exp())
     f_lp = log_prob(f)
@@ -151,6 +151,14 @@ class LogProbTest(test_util.TestCase):
     with self.assertRaisesRegex(ValueError,
                                 'Cannot compute log_prob of function.'):
       f_lp(True)
+
+  def test_log_prob_shouldnt_double_count_ildjs(self):
+
+    @jax.jit
+    def f(rng):
+      return jnp.exp(jax.jit(random_normal)(rng))
+
+    self.assertEqual(log_prob(f)(2.), bd.LogNormal(0., 1.).log_prob(2.))
 
 
 if __name__ == '__main__':
