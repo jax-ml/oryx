@@ -237,8 +237,7 @@ def evaluate(obj, env: Env) -> Any:
 @evaluate.register(float)
 @evaluate.register(int)
 @evaluate.register(np.ndarray)
-@evaluate.register(jax.xla.DeviceArray)
-@evaluate.register(jax_core.Tracer)
+@evaluate.register(jax.Array)
 def evaluate_value(value, env: Env) -> Any:
   """Default evaluate function for numerical types."""
   del env
