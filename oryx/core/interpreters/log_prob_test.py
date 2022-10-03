@@ -20,7 +20,6 @@ from jax import linear_util as lu
 from jax import random
 from jax._src import api_util
 import jax.numpy as jnp
-import tensorflow_probability.substrates.jax as tfp
 
 from oryx import bijectors as bb
 from oryx.core import state
@@ -28,9 +27,9 @@ from oryx.core.interpreters.log_prob import log_prob
 from oryx.core.interpreters.log_prob import log_prob_registry
 from oryx.core.interpreters.log_prob import log_prob_rules
 from oryx.internal import test_util
+import tensorflow_probability.substrates.jax as tfp
 
 tfd = tfp.distributions
-
 
 random_normal_p = jax_core.Primitive('random_normal')
 
