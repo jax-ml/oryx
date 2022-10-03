@@ -15,19 +15,22 @@
 """Tests for oryx.core.interpreters.log_prob."""
 from absl.testing import absltest
 import jax
-from jax import abstract_arrays
 from jax import core as jax_core
 from jax import linear_util as lu
 from jax import random
+from jax._src import api_util
 import jax.numpy as jnp
+import tensorflow_probability.substrates.jax as tfp
 
 from oryx import bijectors as bb
-from oryx import distributions as bd
 from oryx.core import state
 from oryx.core.interpreters.log_prob import log_prob
 from oryx.core.interpreters.log_prob import log_prob_registry
 from oryx.core.interpreters.log_prob import log_prob_rules
 from oryx.internal import test_util
+
+tfd = tfp.distributions
+
 
 random_normal_p = jax_core.Primitive('random_normal')
 
@@ -46,7 +49,7 @@ random_normal_p.def_impl(random_normal_impl)
 
 def random_normal_abstract(_, name=None):
   del name
-  return abstract_arrays.ShapedArray((), jnp.float32)
+  return jax_core.ShapedArray((), jnp.float32)
 
 
 random_normal_p.def_abstract_eval(random_normal_abstract)
@@ -57,7 +60,7 @@ def random_normal_log_prob_rule(incells, outcells, **_):
   if not outcell.top():
     return incells, outcells, None
   outval = outcell.val
-  return incells, outcells, bd.Normal(0., 1.).log_prob(outval)
+  return incells, outcells, tfd.Normal(0., 1.).log_prob(outval)
 
 
 log_prob_rules[random_normal_p] = random_normal_log_prob_rule
@@ -68,10 +71,10 @@ def call(f):
 
   def wrapped(*args, **kwargs):
     fun = lu.wrap_init(f, kwargs)
-    flat_args, in_tree = jax.tree_flatten(args)
-    flat_fun, out_tree = jax.flatten_fun_nokwargs(fun, in_tree)
+    flat_args, in_tree = jax.tree_util.tree_flatten(args)
+    flat_fun, out_tree = api_util.flatten_fun_nokwargs(fun, in_tree)
     ans = jax_core.call_p.bind(flat_fun, *flat_args)
-    return jax.tree_unflatten(out_tree(), ans)
+    return jax.tree_util.tree_unflatten(out_tree(), ans)
 
   return wrapped
 
@@ -87,15 +90,15 @@ class LogProbTest(test_util.TestCase):
       return random_normal(rng)
 
     f_lp = log_prob(f)
-    self.assertEqual(f_lp(0.), bd.Normal(0., 1.).log_prob(0.))
-    self.assertEqual(f_lp(1.), bd.Normal(0., 1.).log_prob(1.))
+    self.assertEqual(f_lp(0.), tfd.Normal(0., 1.).log_prob(0.))
+    self.assertEqual(f_lp(1.), tfd.Normal(0., 1.).log_prob(1.))
 
   def test_log_normal_log_prob(self):
 
     def f(rng):
       return jnp.exp(random_normal(rng))
 
-    dist = bd.TransformedDistribution(bd.Normal(0., 1.), bb.Exp())
+    dist = tfd.TransformedDistribution(tfd.Normal(0., 1.), bb.Exp())
     f_lp = log_prob(f)
     self.assertEqual(f_lp(2.), dist.log_prob(2.))
 
@@ -126,7 +129,7 @@ class LogProbTest(test_util.TestCase):
       return random_normal(rng) + x
 
     f_lp = log_prob(f)
-    self.assertEqual(f_lp(0.1, 1.0), bd.Normal(0., 1.).log_prob(-0.9))
+    self.assertEqual(f_lp(0.1, 1.0), tfd.Normal(0., 1.).log_prob(-0.9))
 
   def test_log_prob_in_call(self):
 
@@ -136,7 +139,7 @@ class LogProbTest(test_util.TestCase):
 
     f_lp = log_prob(f)
     s = f(random.PRNGKey(0))
-    self.assertEqual(f_lp(s), bd.Normal(0., 1.).log_prob(s))
+    self.assertEqual(f_lp(s), tfd.Normal(0., 1.).log_prob(s))
 
   def test_log_prob_should_fail_inside_of_make_jaxpr(self):
 
@@ -158,7 +161,7 @@ class LogProbTest(test_util.TestCase):
     def f(rng):
       return jnp.exp(jax.jit(random_normal)(rng))
 
-    self.assertEqual(log_prob(f)(2.), bd.LogNormal(0., 1.).log_prob(2.))
+    self.assertEqual(log_prob(f)(2.), tfd.LogNormal(0., 1.).log_prob(2.))
 
 
 if __name__ == '__main__':
