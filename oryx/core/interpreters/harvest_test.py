@@ -138,7 +138,8 @@ class ReapTest(parameterized.TestCase):
     def f(x):
       return variable(x, name='x')
 
-    np.testing.assert_allclose(reap_variables(f)(jnp.ones(2))['x'], jnp.ones(2))
+    x = jnp.ones(jax.local_device_count())
+    np.testing.assert_allclose(reap_variables(f)(x)['x'], x)
 
   def test_reap_should_remove_sow_primitives(self):
 
@@ -402,11 +403,12 @@ class PlantTest(test_util.TestCase):
     def f(x):
       return jax.pmap(lambda x: variable(x, name='x'))(x)
 
-    np.testing.assert_allclose(plant_variables(f)({}, jnp.ones(2)), jnp.ones(2))
+    x = jnp.ones(jax.local_device_count())
+    np.testing.assert_allclose(plant_variables(f)({}, x), x)
     np.testing.assert_allclose(
         plant_variables(f)({
-            'x': 2 * jnp.ones(2)
-        }, jnp.ones(2)), 2 * jnp.ones(2))
+            'x': 2 * x
+        }, x), 2 * x)
 
   def test_plant_should_handle_closed_over_values(self):
 

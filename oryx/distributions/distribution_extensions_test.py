@@ -102,7 +102,7 @@ class DistributionsExtensionsTest(test_util.TestCase):
     args = args()
     kwargs = kwargs()
     p = dist(*args, **kwargs)
-    flat_p, _ = jax.tree_flatten(p)
+    flat_p, _ = jax.tree_util.tree_flatten(p)
     self.assertEqual(len(flat_p), len(flat))
     for e1, e2 in zip(flat_p, flat):
       np.testing.assert_allclose(e1, e2)

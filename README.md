@@ -45,9 +45,8 @@ $ poetry shell
 
 ### Running tests
 
-Oryx uses [Bazel](https://bazel.build/) for building and testing. Once Bazel is
-installed, you can run tests by executing:
+Oryx uses [Pytest](https://pytest.org/) for testing. To run the tests, use the following command:
 
 ```
-$ poetry run bazel test //oryx/...
+$ poetry run pytest oryx
 ```
