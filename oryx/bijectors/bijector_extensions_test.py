@@ -18,18 +18,21 @@ from absl.testing import absltest
 from absl.testing import parameterized
 import jax
 import numpy as onp
+import tensorflow_probability.substrates.jax as tfp
 
-from oryx import bijectors as bb
+
 from oryx import core
 from oryx.internal import test_util
 
+tfb = tfp.bijectors
+
 BIJECTORS = [
-    ('exp', lambda: bb.Exp(), 1., []),  # pylint: disable=unnecessary-lambda
-    ('shift', lambda: bb.Shift(3.), 1., [3.]),
-    ('Scale', lambda: bb.Scale(2.), 1., [2.]),
-    ('transform_diagonal', lambda: bb.TransformDiagonal(bb.Exp()),
+    ('exp', lambda: tfb.Exp(), 1., []),  # pylint: disable=unnecessary-lambda
+    ('shift', lambda: tfb.Shift(3.), 1., [3.]),
+    ('Scale', lambda: tfb.Scale(2.), 1., [2.]),
+    ('transform_diagonal', lambda: tfb.TransformDiagonal(tfb.Exp()),
      onp.eye(2).astype(onp.float32), []),
-    ('invert', lambda: bb.Invert(bb.Exp()), 1., []),
+    ('invert', lambda: tfb.Invert(tfb.Exp()), 1., []),
 ]
 
 

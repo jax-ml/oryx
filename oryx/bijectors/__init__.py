@@ -26,7 +26,7 @@ for name in __all__:
   bij = getattr(tfb, name)
   if inspect.isclass(bij) and issubclass(bij, tfb.Bijector):
     if bij is not tfb.Bijector:
-      bij = bijector_extensions.make_type(bij)
+      bijector_extensions.patch_bijector(bij)
   locals()[name] = bij
 
 del tfb
