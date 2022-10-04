@@ -51,7 +51,7 @@ class BijectorsExtensionsTest(test_util.TestCase):
   def test_flatten(self, bij, inp, flat):
     del inp
     b = bij()
-    flat_p, _ = jax.tree_flatten(b)
+    flat_p, _ = jax.tree_util.tree_flatten(b)
     for e1, e2 in zip(flat_p, flat):
       onp.testing.assert_allclose(e1, e2)
 
