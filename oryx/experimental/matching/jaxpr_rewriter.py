@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+import abc
 import dataclasses
+import functools
+import itertools as it
 
-from typing import Any, List, Tuple
+from typing import Any, Callable, Dict, List, Set, Tuple, Union
 
 from jax import core as jax_core
 import jax.numpy as jnp
 
 from oryx.experimental.matching import matcher
+from oryx.experimental.matching import rules
 from oryx.experimental.matching import jax_rewrite as jr
 
 Expr = matcher.Expr
@@ -15,162 +19,262 @@ Bindings = matcher.Bindings
 Continuation = matcher.Continuation
 Success = matcher.Success
 
-@dataclasses.dataclass(frozen=True)
-class JaxprVar(jr.JaxExpression):
-  _shape: Tuple[int, ...]
-  _dtype: jnp.dtype
+class Node(matcher.Pattern, metaclass=abc.ABCMeta):
+
+  @abc.abstractproperty
+  def parents(self) -> List[Node]:
+    ...
+
+
+  @abc.abstractmethod
+  def set_parent(self, node, new_node):
+    ...
+
+  @abc.abstractmethod
+  def map_parents(self, fn: Callable[[Node], Node]) -> Node:
+    ...
+
+@dataclasses.dataclass(eq=False)
+class Eqn(Node):
+  primitive: jax_core.Primitive
+  params: jr.Params
+  invars: List[Node]
+  shape: Union[Tuple[int, ...], List[Tuple[int, ...]]]
+  dtype: Union[jnp.dtype, List[jnp.dtype]]
+
+  @property
+  def parents(self):
+    return self.invars
+
+  def set_parent(self, node, new_node):
+    invar_idx = self.invars.index(node)
+    self.invars[invar_idx] = new_node
+
+  def map_parents(self, fn):
+    return Eqn(self.primitive, self.params, list(map(fn, self.invars)),
+               self.shape, self.dtype)
 
   def match(self, expr, bindings, succeed):
-    if not isinstance(expr, JaxprVar):
+    if not isinstance(expr, Eqn):
       return
-    yield from matcher.matcher((self._shape, self.dtype))(
-        (expr._shape, expr._dtype), bindings, succeed)
+    yield from matcher.matcher((self.primitive, self.params, self.invars,
+      self.shape, self.dtype))(
+        (expr.primitive, expr.params, expr.invars, expr.shape, expr.dtype),
+        bindings, succeed)
 
-  def tree_map(self, fn):
+@dataclasses.dataclass(frozen=True, eq=False)
+class JaxprVar(Node):
+  shape: Tuple[int, ...]
+  dtype: jnp.dtype
+
+  def match(self, expr, bindings, succeed):
+    if expr is self:
+      yield from succeed(bindings)
+
+  @property
+  def parents(self):
+    return []
+
+  def set_parent(self, node, new_node):
+    raise NotImplementedError
+
+  def map_parents(self, fn):
     return self
 
-  def tree_children(self):
-    yield from []
+  @classmethod
+  def from_var(cls, var: jax_core.Var) -> JaxprVar:
+    return JaxprVar(var.aval.shape, var.aval.dtype)
 
-  @property
-  def dtype(self):
-    return self._dtype
-
-  @property
-  def shape(self):
-    return self._shape
-
-  def evaluate(self, env):
-    return env[self]
-
-@dataclasses.dataclass(frozen=True)
-class Literal(jr.JaxExpression):
+@dataclasses.dataclass(eq=False, frozen=True)
+class Literal(Node):
   value: Any
-  _dtype: jnp.dtype
-
-  def match(self, expr, bindings, succeed):
-    if not isinstance(expr, Literal):
-      return
-    yield from matcher.matcher((self.value, self.dtype))(
-        (expr.value, expr._dtype), bindings, succeed)
-
-  def tree_map(self, fn):
-    return self
-
-  def tree_children(self):
-    yield from []
+  dtype: jnp.dtype
 
   @property
-  def dtype(self):
-    return self._dtype
+  def parents(self):
+    return []
+
+  def map_parents(self, fn, visited):
+    return self
+
+  def set_parent(self, node, new_node):
+    raise NotImplementedError
 
   @property
   def shape(self):
     return ()
 
-  def __hash__(self):
-    return object.__hash__(self)
-
-  def evaluate(self, _):
-    return self.value
-
-@dataclasses.dataclass(frozen=True)
-class Jaxpr:
-  constvars: Tuple[JaxprVar]
-  invars: Tuple[JaxprVar]
-  eqns: Tuple[JaxprEqn]
-  outvars: Tuple[JaxprVar]
-
-  def match(self, pattern):
-    for eqn in self.eqns:
-      pass
-    
+  def match(self, expr, bindings, succeed):
+    if not isinstance(expr, Literal):
+      return []
+    yield from matcher.matcher((self.value, self.dtype))((expr.value,
+      expr.dtype), bindings, succeed)
 
   @classmethod
-  def from_jaxpr(cls, jaxpr: jax_core.Jaxpr) -> Jaxpr:
+  def from_literal(cls, var: jax_core.Literal) -> Literal:
+    return Literal(var.val, var.aval.dtype)
+
+
+@dataclasses.dataclass(eq=False)
+class Part(Node):
+  index: int
+  shape: Tuple[int, ...]
+  dtype: jnp.dtype
+  parent: Node
+
+  def match(self, expr, bindings, succeed):
+    if not isinstance(expr, Part):
+      return []
+    yield from matcher.matcher((self.index, self.shape, self.dtype, self.parent))((
+      expr.index, expr.shape, expr.dtype, expr.parent), bindings, succeed)
+
+  def set_parent(self, _, new_node):
+    self.parent = new_node
+
+  @property
+  def parents(self):
+    return [self.parent]
+
+  def map_parents(self, fn):
+    return Part(self.index, self.shape, self.dtype, fn(self.parent))
+
+@dataclasses.dataclass(frozen=True)
+class JaxprGraph(matcher.Pattern):
+  nodes: Set[Node]
+  constvars: List[Node]
+  invars: List[Node]
+  outvars: List[Node]
+
+  def get_children(self, node) -> List[Node]:
+    return [n for n in self.nodes if node in n.parents]
+
+  def get_nodes(self, node) -> Set[Node]:
+    nodes = [self.get_nodes(p) for p in node.parents]
+    if nodes:
+      return {node} | set.union(*nodes)
+    return {node}
+
+  def rewrite_subgraph(self, pattern, handler) -> JaxprGraph:
+    queue = list(self.outvars)
+    while queue:
+      node = queue.pop(0)
+      try:
+        match = matcher.match(pattern, node)
+        new_node = handler(**match)
+        if node in self.outvars:
+          i = self.outvars.index(node)
+          self.outvars[i] = new_node
+        elif isinstance(node, Eqn):
+          children = self.get_children(node)
+          for c in children:
+            c.set_parent(node, new_node)
+        else:
+          raise NotImplementedError
+        return
+      except matcher.MatchError:
+        queue.extend(node.parents)
+
+  @classmethod
+  def from_jaxpr(cls, jaxpr: jax_core.Jaxpr) -> JaxprGraph:
+    nodes = set()
     var_mapping = {}
-    for var in jaxpr.invars + jaxpr.constvars:
-      new_invar = JaxprVar(var.aval.shape, var.aval.dtype)
-      var_mapping[var] = new_invar
-    eqns = []
+    for var in it.chain(jaxpr.constvars, jaxpr.invars):
+      node = JaxprVar.from_var(var)
+      var_mapping[var] = node
+      nodes.add(node)
     for eqn in jaxpr.eqns:
       invars = []
-      for var in eqn.invars:
-        if isinstance(var, jax_core.Literal):
-          invars.append(Literal(var.val, var.aval.dtype))
+      for invar in eqn.invars:
+        if isinstance(invar, jax_core.Literal):
+          node = Literal.from_literal(invar)
         else:
-          invars.append(var_mapping[var])
-      new_outvars = []
-      for var in eqn.outvars:
-        new_outvar = JaxprVar(var.aval.shape, var.aval.dtype)
-        var_mapping[var] = new_outvar
-        new_outvars.append(new_outvar)
-      eqns.append(JaxprEqn(tuple(invars), tuple(new_outvars), eqn.primitive,
-        jr.Params(eqn.params)))
-    invars = tuple(var_mapping[v] for v in jaxpr.invars)
-    constvars = tuple(var_mapping[v] for v in jaxpr.constvars)
-    outvars = tuple(var_mapping[v] for v in jaxpr.outvars)
-    eqns = tuple(eqns)
-    return Jaxpr(constvars, invars, eqns, outvars)
+          node = var_mapping[invar]
+        invars.append(node)
+      if eqn.primitive.multiple_results:
+        node = Eqn(eqn.primitive, jr.Params(eqn.params), invars,
+                   [o.aval.shape for o in eqn.outvars],
+                   [o.aval.dtype for o in eqn.outvars])
+        for i, outvar in enumerate(eqn.outvars):
+          part = Part(i, outvar.aval.shape, outvar.aval.dtype, node)
+          nodes.add(part)
+          var_mapping[outvar] = part
+      else:
+        node = Eqn(eqn.primitive, jr.Params(eqn.params), invars,
+                   eqn.outvars[0].aval.shape, eqn.outvars[0].aval.dtype)
+        var_mapping[eqn.outvars[0]] = node
+      nodes.add(node)
+    constvars = [var_mapping[constvar] for constvar in jaxpr.constvars]
+    invars = [var_mapping[invar] for invar in jaxpr.invars]
+    outvars = [var_mapping[outvar] for outvar in jaxpr.outvars]
+    return JaxprGraph(nodes, constvars, invars, outvars)
 
   def to_jaxpr(self) -> jax_core.Jaxpr:
     gen = jax_core.gensym()
-    var_mapping = {}
-    for var in self.invars + self.constvars:
-      var_mapping[var] = gen(jax_core.ShapedArray(var._shape, var._dtype))
     eqns = []
-    for eqn in self.eqns:
-      invars = []
-      for var in eqn.invars:
-        if isinstance(var, Literal):
-          invars.append(jax_core.Literal(var.value, jax_core.ShapedArray((), var._dtype)))
+    sorted_nodes = self.toposort()
+    env = {}
+    for var in it.chain(self.invars, self.constvars):
+      env[var] = gen(jax_core.ShapedArray(var.shape, var.dtype))
+    incomplete_eqns = {}
+    for node in sorted_nodes:
+      if isinstance(node, Literal):
+        continue
+      elif isinstance(node, JaxprVar):
+        assert node in env
+        continue
+      elif isinstance(node, Eqn):
+        invars = []
+        for n in node.invars:
+          if isinstance(n, Literal):
+            invars.append(jax_core.Literal(n.value, jax_core.ShapedArray((),
+              n.dtype)))
+          else:
+            invars.append(env[n])
+        jaxpr_eqn = jax_core.JaxprEqn(invars, [], node.primitive,
+            dict(node.params), jax_core.no_effects, None)
+        if node.primitive.multiple_results:
+          incomplete_eqns[node] = jaxpr_eqn
         else:
-          invars.append(var_mapping[var])
-      for var in eqn.outvars:
-        var_mapping[var] = gen(jax_core.ShapedArray(var._shape, var._dtype))
-      outvars = [var_mapping[var] for var in eqn.outvars]
-      eqns.append(jax_core.JaxprEqn(invars, outvars, eqn.primitive,
-        dict(eqn.params), jax_core.no_effects, None))
-    constvars = [var_mapping[v] for v in self.constvars]
-    invars = [var_mapping[v] for v in self.invars]
-    outvars = [var_mapping[v] for v in self.outvars]
-    return jax_core.Jaxpr(
-        constvars, invars, outvars, eqns, jax_core.no_effects)
+          outvar = gen(jax_core.ShapedArray(node.shape, node.dtype))
+          env[node] = outvar
+          jaxpr_eqn = jaxpr_eqn.replace(outvars=[outvar])
+          incomplete_eqns[node] = jaxpr_eqn
+      elif isinstance(node, Part):
+        eqn = node.parent
+        incomplete_eqn = incomplete_eqns[eqn]
+        outvars = list(incomplete_eqn.outvars)
+        if len(outvars) <= node.index:
+          outvars = outvars + [None] * (node.index - len(outvars) + 1)
+        outvar = gen(jax_core.ShapedArray(node.shape, node.dtype))
+        outvars[node.index] = outvar
+        env[node] = outvar
+        incomplete_eqns[eqn] = incomplete_eqn.replace(outvars=outvars)
+    eqns = list(incomplete_eqns.values())
+    constvars = [env[n] for n in self.constvars]
+    invars = [env[n] for n in self.invars]
+    outvars = [env[n] for n in self.outvars]
+    return jax_core.Jaxpr(constvars, invars, outvars, eqns, jax_core.no_effects)
 
-
-@dataclasses.dataclass(frozen=True)
-class JaxprEqn(jr.JaxExpression):
-  invars: Tuple[jax_core.Atom]
-  outvars: Tuple[jax_core.JaxprVar]
-  primitive: jax_core.Primitive
-  params: jr.Params
-
-  @property
-  def dtype(self):
-    return [o.aval.dtype for o in self.outvars]
-  
-  @property
-  def shape(self):
-    return [o.aval.shape for o in self.outvars]
-
-  def match(self, expr: Expr, bindings: Bindings,
-            succeed: Continuation) -> Success:
-    if not isinstance(expr, JaxprEqn):
-      return
-    yield from matcher.matcher(
-        (self.invars, self.outvars, self.primitive, self.params))(
-        (expr.invars, expr.outvars, expr.primitive, expr.params),
-        bindings, succeed)
-
-  def tree_map(self, fn):
-    return self
-
-  def tree_children(self):
-    yield from self.invars
-    yield from self.outvars
-    yield self.primitive
-    yield self.params
-
-  def evaluate(self, env):
-    invals = [jr.evaluate(v, env) for v in self.invars]
-    return self.primitive.bind(*invals, **self.params)
+  def toposort(self) -> List[Node]:
+    node_stack = list(self.outvars)
+    child_counts = {}
+    while node_stack:
+      node = node_stack.pop()
+      if node in child_counts:
+        child_counts[node] += 1
+      else:
+        child_counts[node] = 1
+        node_stack.extend(node.parents)
+    for node in self.outvars:
+      child_counts[node] -= 1
+    childless_nodes = [node for node in self.outvars if child_counts[node] == 0]
+    sorted_nodes = []
+    while childless_nodes:
+      node = childless_nodes.pop()
+      sorted_nodes.append(node)
+      for parent in node.parents:
+        if child_counts[parent] == 1:
+          childless_nodes.append(parent)
+        else:
+          child_counts[parent] -= 1
+    return list(reversed(sorted_nodes))

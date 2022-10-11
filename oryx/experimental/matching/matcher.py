@@ -329,7 +329,6 @@ class Pattern:
             succeed: Continuation) -> Success:
     raise NotImplementedError
 
-
 @matcher.register(Pattern)
 def pattern_matcher(pattern):
   return pattern.match
