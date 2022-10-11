@@ -138,7 +138,7 @@ class Part(Node):
   def map_parents(self, fn):
     return Part(self.index, self.shape, self.dtype, fn(self.parent))
 
-@dataclasses.dataclass(frozen=True)
+@dataclasses.dataclass(eq=True)
 class JaxprGraph(matcher.Pattern):
   nodes: Set[Node]
   constvars: List[Node]
@@ -154,7 +154,7 @@ class JaxprGraph(matcher.Pattern):
       return {node} | set.union(*nodes)
     return {node}
 
-  def rewrite_subgraph(self, pattern, handler) -> JaxprGraph:
+  def rewrite_subgraph(self, pattern, handler) -> bool:
     queue = list(self.outvars)
     while queue:
       node = queue.pop(0)
@@ -170,9 +170,10 @@ class JaxprGraph(matcher.Pattern):
             c.set_parent(node, new_node)
         else:
           raise NotImplementedError
-        return
+        return True
       except matcher.MatchError:
         queue.extend(node.parents)
+    return False
 
   @classmethod
   def from_jaxpr(cls, jaxpr: jax_core.Jaxpr) -> JaxprGraph:
