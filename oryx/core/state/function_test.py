@@ -16,8 +16,8 @@
 
 from absl.testing import absltest
 import jax
-from jax import core as jax_core
 from jax import random
+from jax._src import core as jax_core
 import jax.numpy as np
 import numpy as onp
 

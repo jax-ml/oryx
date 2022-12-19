@@ -18,10 +18,10 @@ from typing import Callable
 
 from jax import abstract_arrays
 from jax import api_util
-from jax import core as jax_core
 from jax import linear_util as lu
 from jax import tree_util
 from jax import util as jax_util
+from jax._src import core as jax_core
 from jax.interpreters import ad
 from jax.interpreters import batching
 from jax.interpreters import mlir

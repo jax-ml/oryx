@@ -17,8 +17,8 @@ from absl.testing import absltest
 
 import jax
 from jax import abstract_arrays
-from jax import core as jax_core
 from jax import random
+from jax._src import core as jax_core
 from jax.interpreters import batching
 import jax.numpy as jnp
 import numpy as np

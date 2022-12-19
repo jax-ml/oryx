@@ -15,10 +15,10 @@
 """Tests for oryx.core.interpreters.log_prob."""
 from absl.testing import absltest
 import jax
-from jax import core as jax_core
 from jax import linear_util as lu
 from jax import random
 from jax._src import api_util
+from jax._src import core as jax_core
 import jax.numpy as jnp
 
 from oryx import bijectors as bb

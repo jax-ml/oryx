@@ -13,9 +13,9 @@
 # limitations under the License.
 
 """Module for log_prob transformation."""
-from jax import core as jax_core
 from jax import random
 from jax import tree_util
+from jax._src import core as jax_core
 
 from oryx.core import trace_util
 from oryx.core.interpreters import inverse

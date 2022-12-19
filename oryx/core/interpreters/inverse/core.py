@@ -18,9 +18,9 @@ from typing import Iterable
 
 import jax
 from jax import abstract_arrays
-from jax import core as jax_core
 from jax import tree_util
 from jax import util as jax_util
+from jax._src import core as jax_core
 from jax.interpreters import pxla
 import jax.numpy as np
 
