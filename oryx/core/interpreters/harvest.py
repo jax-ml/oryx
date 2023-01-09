@@ -649,8 +649,8 @@ def reap_function(main: jax_core.MainTrace, settings: HarvestSettings,
   with trace_util.new_dynamic_context(main, context):
     ans = yield in_tracers, {}
     out_tracers = jax_util.safe_map(trace.full_raise, ans)
-    reap_tracers = tree_util.tree_map(lambda x: trace.full_raise(x.value),
-                                      context.reaps)
+    reap_tracers = tree_util.tree_map(
+        lambda x: tree_util.tree_map(trace.full_raise, x.value), context.reaps)
     reap_metadata = tree_util.tree_map(lambda x: x.metadata, context.reaps)
     del main
   out_values, reap_values = tree_util.tree_map(lambda x: x.val,
