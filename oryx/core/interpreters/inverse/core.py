@@ -21,6 +21,7 @@ from jax import abstract_arrays
 from jax import tree_util
 from jax import util as jax_util
 from jax._src import core as jax_core
+from jax.experimental import pjit
 from jax.interpreters import pxla
 import jax.numpy as np
 
@@ -312,6 +313,32 @@ def initial_inverse_rule(prim):
 
 
 primitive.register_initial_transformation_rule('inverse', initial_inverse_rule)
+
+
+def pjit_ildj(incells, outcells, **params):
+  """Registers inverse rule for pjit."""
+  # TODO(https://github.com/jax-ml/oryx/issues/29): Fix this rule so that it  # pylint: disable=g-bad-todo
+  # works correct for in_sharding, out_shardings, in_positional_semantics and
+  # donated_invars.
+  if not any(pxla._is_unspecified(i) for i in params['in_shardings']):  # pylint: disable=protected-access
+    raise ValueError('oryx only supports pjit which has no in_axis_resources '
+                     'specified.')
+  if not any(pxla._is_unspecified(o) for o in params['out_shardings']):  # pylint: disable=protected-access
+    raise ValueError('oryx only supports pjit which has no out_axis_resources '
+                     'specified.')
+
+  jaxpr = params['jaxpr']
+  jaxpr_, consts = jaxpr.jaxpr, jaxpr.consts
+  num_consts = len(consts)
+  const_cells, incells = jax_util.split_list(incells, [num_consts])
+  env, state = propagate.propagate(
+      InverseAndILDJ, ildj_registry, jaxpr_, const_cells,
+      incells, outcells)  # pytype: disable=wrong-arg-types
+  new_incells = [env.read(invar) for invar in jaxpr_.invars]
+  new_outcells = [env.read(outvar) for outvar in jaxpr_.outvars]
+  return const_cells + new_incells, new_outcells, state
+
+ildj_registry[pjit.pjit_p] = pjit_ildj
 
 
 def map_ildj(prim, incells, outcells, **params):
