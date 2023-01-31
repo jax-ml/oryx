@@ -132,11 +132,11 @@ reap(f, tag='intermediate')(5.)  # ==> {'y': 6.}
   the values, assuming they have a leading map dimension.
 """
 from __future__ import annotations
+
 import collections
 import dataclasses
 import functools
-
-from typing import Any, Callable, Dict, FrozenSet, Iterable, List, Optional, Tuple, Union, Hashable
+from typing import Any, Callable, Dict, FrozenSet, Hashable, Iterable, List, Optional, Tuple, Union
 
 from jax import abstract_arrays
 from jax import api_util
@@ -146,11 +146,13 @@ from jax import tree_util
 from jax import util as jax_util
 from jax._src import ad_checkpoint
 from jax._src import core as jax_core
+from jax._src import pjit
 from jax._src.lax import control_flow as lcf
 from jax.interpreters import ad
 from jax.interpreters import batching
 from jax.interpreters import mlir
 from jax.interpreters import partial_eval as pe
+from jax.interpreters import pxla
 from jax.interpreters import xla
 from jax.lib import xla_client as xc
 import jax.numpy as jnp
@@ -1007,6 +1009,79 @@ def _reap_checkpoint_rule(trace, *tracers, jaxpr, policy, prevent_cse,
 
 reap_custom_rules[ad_checkpoint.remat_p] = _reap_checkpoint_rule
 
+
+@lu.cache
+def _oryx_pjit_jaxpr(flat_fun, in_avals):
+  jaxpr, out_avals, consts = pe.trace_to_jaxpr_dynamic(flat_fun, in_avals)
+  if any(isinstance(c, jax_core.Tracer) for c in consts):
+    jaxpr = pe.convert_constvars_jaxpr(jaxpr)
+    jaxpr = pe.close_jaxpr(jaxpr)
+    final_consts = consts
+  else:
+    jaxpr = jax_core.ClosedJaxpr(jaxpr, consts)
+    final_consts = []
+
+  return pjit._ListWithW([jaxpr, final_consts, out_avals])  # pylint: disable=protected-access
+
+
+def _calc_extra_inps(num_consts, params):
+  in_shardings = (
+      pjit._UNSPECIFIED,) * num_consts + params['in_shardings']  # pylint: disable=protected-access
+  donated_invars = (False,) * num_consts + params['donated_invars']
+  in_positional_semantics = ((pxla._PositionalSemantics.GLOBAL,) * num_consts +  # pylint: disable=protected-access
+                             params['in_positional_semantics'])
+  return in_shardings, donated_invars, in_positional_semantics
+
+
+def _reap_pjit_rule(trace, *tracers, **params):
+  """Reap pjit rule."""
+  if (params['in_shardings'] and
+      not any(pjit._is_unspecified(i) for i in params['in_shardings'])):  # pylint: disable=protected-access
+    raise ValueError('oryx only supports pjit which has no in_axis_resources '
+                     f'specified. Got {params["in_shardings"]}')
+  if (params['out_shardings'] and
+      not any(pjit._is_unspecified(o) for o in params['out_shardings'])):  # pylint: disable=protected-access
+    raise ValueError('oryx only supports pjit which has no out_axis_resources '
+                     f'specified. Got {params["out_shardings"]}')
+
+  invals = [t.val for t in tracers]
+  context = trace_util.get_dynamic_context(trace)
+  settings = context.settings
+  reap_settings = dict(
+      tag=settings.tag,
+      allowlist=settings.allowlist,
+      blocklist=settings.blocklist,
+      exclusive=settings.exclusive)
+  closed_jaxpr = params['jaxpr']
+  reap_metadata = _get_harvest_metadata(closed_jaxpr, settings, *tracers)
+  pjit_fun = jax_core.jaxpr_as_fun(closed_jaxpr)
+  reaped_pjit_fun = lu.wrap_init(call_and_reap(pjit_fun, **reap_settings))
+  in_tree = tree_util.tree_structure(invals)
+  flat_fun, out_tree = api_util.flatten_fun_nokwargs(reaped_pjit_fun, in_tree)
+
+  reap_jaxpr, final_consts, out_avals = _oryx_pjit_jaxpr(
+      flat_fun, tuple(t.aval for t in tracers))
+  in_shardings, donated_invars, in_positional_semantics = _calc_extra_inps(
+      len(final_consts), params)
+
+  new_params = {**params,
+                'jaxpr': reap_jaxpr,
+                'out_shardings': (pjit._UNSPECIFIED,) * len(out_avals),  # pylint: disable=protected-access
+                'in_shardings': in_shardings,
+                'donated_invars': donated_invars,
+                'in_positional_semantics': in_positional_semantics}
+  outvals = pjit.pjit_p.bind(*final_consts, *invals, **new_params)
+
+  outvals = jax_util.safe_map(trace.pure, outvals)
+  out, reaps = tree_util.tree_unflatten(out_tree(), outvals)
+  for k, v in reaps.items():
+    sow(v, name=k, tag=settings.tag, mode=reap_metadata[k]['mode'])
+  return out
+
+
+reap_custom_rules[pjit.pjit_p] = _reap_pjit_rule
+
+
 plant_custom_rules = {}
 
 
@@ -1368,6 +1443,53 @@ def _plant_checkpoint_rule(trace, *tracers, jaxpr, policy, prevent_cse,
 
 
 plant_custom_rules[ad_checkpoint.remat_p] = _plant_checkpoint_rule
+
+
+def _plant_pjit_rule(trace, *tracers, **params):
+  """Plant pjit rule."""
+  if (params['in_shardings'] and
+      not any(pjit._is_unspecified(i) for i in params['in_shardings'])):  # pylint: disable=protected-access
+    raise ValueError('oryx only supports pjit which has no in_axis_resources '
+                     f'specified. Got {params["in_shardings"]}')
+  if (params['out_shardings'] and
+      not any(pjit._is_unspecified(o) for o in params['out_shardings'])):  # pylint: disable=protected-access
+    raise ValueError('oryx only supports pjit which has no out_axis_resources '
+                     f'specified. Got {params["out_shardings"]}')
+
+  invals = [t.val for t in tracers]
+  context = trace_util.get_dynamic_context(trace)
+  settings = context.settings
+  plant_settings = dict(
+      tag=settings.tag,
+      allowlist=settings.allowlist,
+      blocklist=settings.blocklist,
+      exclusive=settings.exclusive)
+  closed_jaxpr = params['jaxpr']
+  plants = context.plants
+
+  pjit_fun = jax_core.jaxpr_as_fun(closed_jaxpr)
+  planted_pjit_fun = lu.wrap_init(functools.partial(
+      plant(pjit_fun, **plant_settings), plants))
+  in_tree = tree_util.tree_structure(invals)
+  flat_fun, _ = api_util.flatten_fun_nokwargs(planted_pjit_fun, in_tree)
+
+  planted_jaxpr, final_consts, out_avals = _oryx_pjit_jaxpr(
+      flat_fun, tuple(t.aval for t in tracers))
+  in_shardings, donated_invars, in_positional_semantics = _calc_extra_inps(
+      len(final_consts), params)
+
+  new_params = {**params,
+                'jaxpr': planted_jaxpr,
+                'out_shardings': (pjit._UNSPECIFIED,) * len(out_avals),    # pylint: disable=protected-access
+                'in_shardings': in_shardings,
+                'donated_invars': donated_invars,
+                'in_positional_semantics': in_positional_semantics}
+  outvals = pjit.pjit_p.bind(*final_consts, *invals, **new_params)
+
+  return jax_util.safe_map(trace.pure, outvals)
+
+
+plant_custom_rules[pjit.pjit_p] = _plant_pjit_rule
 
 
 def harvest(f,

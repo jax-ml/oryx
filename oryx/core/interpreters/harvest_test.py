@@ -37,6 +37,7 @@ import jax
 from jax import ad_checkpoint
 from jax import config
 from jax import lax
+from jax._src import pjit
 import jax.numpy as jnp
 import numpy as np
 
@@ -396,7 +397,10 @@ class PlantTest(test_util.TestCase):
 
     jaxpr = jax.make_jaxpr(plant_variables(f))({'x': 2.}, 1.)
     primitives = set(eqn.primitive for eqn in jaxpr.jaxpr.eqns)
-    self.assertIn(jax.xla.xla_call_p, primitives)
+    if jax.config.jax_jit_pjit_api_merge:
+      self.assertIn(pjit.pjit_p, primitives)
+    else:
+      self.assertIn(jax.xla.xla_call_p, primitives)
 
   def test_should_plant_in_pmap(self):
 
