@@ -197,10 +197,13 @@ import functools
 from typing import Any, Callable, Dict, Iterator, Optional, Sequence, Tuple, Union
 
 import jax
+from jax import api_util
 from jax import linear_util as lu
 from jax import tree_util
 from jax import util as jax_util
 from jax._src import core as jax_core
+from jax._src import pjit
+from jax.interpreters import partial_eval as pe
 import jax.numpy as jnp
 import numpy as np
 
@@ -686,6 +689,44 @@ class CallPrimitive(JaxExpression):
                  self.variable_names))
 
 
+@lu.cache
+def _to_jaxpr(flat_fun, in_avals):
+  new_jaxpr, _, consts = pe.trace_to_jaxpr_dynamic(flat_fun, in_avals)
+  new_jaxpr = jax_core.ClosedJaxpr(new_jaxpr, consts)
+  return new_jaxpr
+
+
+class PjitPrimitive(CallPrimitive):
+  """Encapsulates JAX's pjit primitive."""
+
+  def match(self, expr: Expr, bindings: Bindings,
+            succeed: Continuation) -> Success:
+    if not isinstance(expr, PjitPrimitive):
+      return
+    yield from matcher.matcher(
+        (self.primitive, self.operands, self.expression, self.params,
+         self.variable_names))((expr.primitive, expr.operands, expr.expression,
+                                expr.params, expr.variable_names), bindings,
+                               succeed)
+
+  def tree_map(self, fn) -> 'PjitPrimitive':
+    return PjitPrimitive(self.primitive, tuple(map(fn, self.operands)),
+                         fn(self.expression), self.params, self.variable_names)
+
+  def evaluate(self, env: Env) -> Any:
+    operands = evaluate(self.operands, env)
+
+    def f(*args):
+      sub_env = dict(jax_util.safe_zip(self.variable_names, args))
+      return evaluate(self.expression, sub_env)
+
+    fun = lu.wrap_init(f)
+    in_avals = tuple(api_util.shaped_abstractify(i) for i in operands)  # pylint: disable=not-an-iterable
+    new_jaxpr = _to_jaxpr(fun, in_avals)
+    new_params = {**self.params, 'jaxpr': new_jaxpr}
+    return pjit.pjit_p.bind(*operands, **new_params)  # pylint: disable=not-an-iterable
+
+
 custom_expressions = {}
 
 
@@ -744,6 +785,12 @@ def jaxpr_to_expressions(jaxpr: jax_core.Jaxpr) -> Tuple[Expr]:
       variable_names = tuple(map(str, call_jaxpr.invars))
       out = CallPrimitive(eqn.primitive, operands, call_expression,
                           Params(params), variable_names)
+    elif eqn.primitive is pjit.pjit_p:
+      jaxpr_ = eqn.params['jaxpr'].jaxpr
+      pjit_expression = BoundExpression(jaxpr_to_expressions(jaxpr_), {})
+      variable_names = tuple(map(str, jaxpr_.invars))
+      out = PjitPrimitive(eqn.primitive, operands, pjit_expression,
+                          Params(eqn.params), variable_names)
     else:
       out = primitive_to_expression(eqn.primitive)(operands, Params(params))
     if eqn.primitive.multiple_results:
