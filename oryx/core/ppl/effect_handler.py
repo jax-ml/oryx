@@ -106,6 +106,9 @@ from jax import linear_util as lu
 from jax import tree_util
 from jax import util as jax_util
 from jax._src import core as jax_core
+from jax._src import pjit
+from jax.interpreters import partial_eval as pe
+from jax.interpreters import pxla
 from jax.interpreters import xla
 
 from oryx.core import trace_util
@@ -120,6 +123,7 @@ VarOrLiteral = Union[jax_core.Var, jax_core.Literal]
 Rules = Dict[jax_core.Primitive, EffectHandler]
 
 _effect_handler_call_rules: Rules = {}
+custom_effect_handler_rules: Rules = {}
 
 
 def register_call_rule(primitive: jax_core.Primitive,
@@ -194,6 +198,9 @@ def eval_jaxpr_with_state(jaxpr: jax_core.Jaxpr, rules: Rules,
           eqn.primitive,
           functools.partial(default_call_interpreter_rule, eqn.primitive))
       ans, state = call_rule(rules, state, invals, call_jaxpr, **params)
+    elif eqn.primitive in custom_effect_handler_rules:
+      ans, state = custom_effect_handler_rules[eqn.primitive](
+          rules, state, invals, **params)
     elif eqn.primitive in rules:
       ans, state = rules[eqn.primitive](state, *invals, **params)
     else:
@@ -241,6 +248,49 @@ def default_call_interpreter_rule(primitive: jax_core.CallPrimitive,
   flat_fun, out_tree = api_util.flatten_fun_nokwargs(fun, state_invals_tree)
   ans_state = primitive.bind(flat_fun, *state_invals, **params)
   return tree_util.tree_unflatten(out_tree(), ans_state)
+
+
+@lu.cache
+def _to_jaxpr(flat_fun, in_avals):
+  new_jaxpr, _, consts = pe.trace_to_jaxpr_dynamic(flat_fun, in_avals)
+  new_jaxpr = jax_core.ClosedJaxpr(new_jaxpr, consts)
+  return new_jaxpr
+
+
+def _pjit_effect_handler_rule(rules, state, invals, **params):
+  """Effect handler rule for pjit."""
+  num_state = len(tree_util.tree_leaves(state))
+
+  fun = lu.wrap_init(
+      functools.partial(eval_jaxpr_with_state, params['jaxpr'].jaxpr, rules, [])
+  )
+  state_invals, state_invals_tree = tree_util.tree_flatten((state, *invals))
+  flat_fun, out_tree = api_util.flatten_fun_nokwargs(fun, state_invals_tree)
+
+  in_avals = tuple(api_util.shaped_abstractify(i) for i in state_invals)
+  new_jaxpr = _to_jaxpr(flat_fun, in_avals)
+
+  in_shardings = (pjit._UNSPECIFIED,) * num_state + params['in_shardings']  # pylint: disable=protected-access
+  donated_invars = (False,) * num_state + params['donated_invars']
+  in_positional_semantics = (
+      pxla._PositionalSemantics.GLOBAL,  # pylint: disable=protected-access
+  ) * num_state + params['in_positional_semantics']
+  out_shardings = (pjit._UNSPECIFIED,) * num_state + params['out_shardings']  # pylint: disable=protected-access
+
+  new_params = {
+      **params,
+      'jaxpr': new_jaxpr,
+      'in_shardings': in_shardings,
+      'out_shardings': out_shardings,
+      'donated_invars': donated_invars,
+      'in_positional_semantics': in_positional_semantics,
+  }
+
+  ans_state = pjit.pjit_p.bind(*state_invals, **new_params)
+  return tree_util.tree_unflatten(out_tree(), ans_state)
+
+
+custom_effect_handler_rules[pjit.pjit_p] = _pjit_effect_handler_rule
 
 
 def xla_call_interpreter_rule(rules: Rules, state: Value,
