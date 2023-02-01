@@ -31,10 +31,13 @@ import functools
 import itertools as it
 from typing import Any, Callable, Dict, List, Tuple, Type, Union
 
+from jax import api_util
 from jax import linear_util as lu
 from jax import tree_util
 from jax._src import core as jax_core
+from jax._src import pjit
 from jax.interpreters import partial_eval as pe
+from jax.interpreters import pxla
 from jax.interpreters import xla
 
 from oryx.core import pytree
@@ -232,6 +235,13 @@ def identity_reducer(env, eqn, state, new_state):
   return state
 
 
+@lu.cache
+def _to_jaxpr(flat_fun, in_avals):
+  new_jaxpr, _, consts = pe.trace_to_jaxpr_dynamic(flat_fun, in_avals)
+  new_jaxpr = jax_core.ClosedJaxpr(new_jaxpr, consts)
+  return new_jaxpr
+
+
 def propagate(cell_type: Type[Cell],
               rules: Dict[jax_core.Primitive, PropagationRule],
               jaxpr: pe.Jaxpr,
@@ -295,6 +305,15 @@ def propagate(cell_type: Type[Cell],
         rule = default_call_rules.get(eqn.primitive)
       else:
         rule = rules[eqn.primitive]
+    elif eqn.primitive is pjit.pjit_p:
+      subfuns = [
+          lu.wrap_init(
+              functools.partial(propagate, cell_type, rules,
+                                eqn.params['jaxpr'].jaxpr, (),
+                                initial_state=initial_state,
+                                reducer=reducer))
+      ]
+      rule = _pjit_propagate_rule
     else:
       subfuns = []
       rule = rules[eqn.primitive]
@@ -344,3 +363,39 @@ default_call_rules[jax_core.call_p] = functools.partial(call_rule,
                                                         jax_core.call_p)
 default_call_rules[harvest.nest_p] = functools.partial(call_rule,
                                                        harvest.nest_p)
+
+
+def _pjit_propagate_rule(incells, outcells, **params):
+  """Propagate rule for pjit primitive."""
+  # TODO(https://github.com/jax-ml/oryx/issues/29): Fix this rule so that it  # pylint: disable=g-bad-todo
+  # works correct for in_sharding, out_shardings, in_positional_semantics and
+  # donated_invars.
+  if not any(pxla._is_unspecified(i) for i in params['in_shardings']):  # pylint: disable=protected-access
+    raise ValueError('oryx only supports pjit which has no in_axis_resources '
+                     'specified.')
+  if not any(pxla._is_unspecified(o) for o in params['out_shardings']):  # pylint: disable=protected-access
+    raise ValueError('oryx only supports pjit which has no out_axis_resources '
+                     'specified.')
+
+  f, incells = incells[0], incells[1:]
+  flat_vals, in_tree = tree_util.tree_flatten((incells, outcells))
+  f, out_tree = flat_propagate(f, in_tree)
+
+  new_jaxpr = _to_jaxpr(
+      f, tuple(api_util.shaped_abstractify(i) for i in flat_vals))
+
+  in_shardings = (pjit._UNSPECIFIED,) * len(flat_vals)  # pylint: disable=protected-access
+  donated_invars = (False,) * len(flat_vals)
+  in_positional_semantics = (pxla._PositionalSemantics.GLOBAL,) * len(flat_vals)  # pylint: disable=protected-access
+  out_shardings = (pjit._UNSPECIFIED,) * len(new_jaxpr.out_avals)  # pylint: disable=protected-access
+
+  new_params = {
+      **params,
+      'jaxpr': new_jaxpr,
+      'in_shardings': in_shardings,
+      'out_shardings': out_shardings,
+      'donated_invars': donated_invars,
+      'in_positional_semantics': in_positional_semantics,
+  }
+  flat_out = pjit.pjit_p.bind(*flat_vals, **new_params)
+  return tree_util.tree_unflatten(out_tree(), flat_out)
