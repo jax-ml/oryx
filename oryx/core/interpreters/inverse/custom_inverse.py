@@ -41,7 +41,6 @@ __all__ = [
 ildj_registry = core.ildj_registry
 NDSlice = slc.NDSlice
 InverseAndILDJ = core.InverseAndILDJ
-safe_zip = jax_util.safe_zip
 
 
 class CustomInverse:

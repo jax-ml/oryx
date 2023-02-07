@@ -253,8 +253,6 @@ LogProbFunction = Callable[..., Scalar]
 
 RANDOM_VARIABLE = 'random_variable'
 
-safe_zip = jax_util.safe_zip
-
 nest = harvest.nest
 
 
@@ -509,7 +507,7 @@ def conditional(f: Program, names: Union[List[str], str]) -> Program:
   def wrapped(*args, **kwargs):
     if num_conditions > 0:
       args, condition_values = args[:-num_conditions], args[-num_conditions:]
-      conditions = dict(safe_zip(names, condition_values))
+      conditions = dict(zip(names, condition_values, strict=True))
     else:
       conditions = {}
     return intervene(f, **conditions)(*args, **kwargs)

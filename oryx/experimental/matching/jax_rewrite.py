@@ -675,7 +675,7 @@ class CallPrimitive(JaxExpression):
     operands = evaluate(self.operands, env)
 
     def f(*args):
-      sub_env = dict(jax_util.safe_zip(self.variable_names, args))
+      sub_env = dict(zip(self.variable_names, args, strict=True))
       return evaluate(self.expression, sub_env)
 
     fun = lu.wrap_init(f)
@@ -717,7 +717,7 @@ class PjitPrimitive(CallPrimitive):
     operands = evaluate(self.operands, env)
 
     def f(*args):
-      sub_env = dict(jax_util.safe_zip(self.variable_names, args))
+      sub_env = dict(zip(self.variable_names, args, strict=True))
       return evaluate(self.expression, sub_env)
 
     fun = lu.wrap_init(f)
@@ -832,7 +832,7 @@ def rewrite(f: Callable[..., Any], rule: rules.Rule) -> Callable[..., Any]:
                                                                       **kwargs)
     rewritten = rule(bound_expression)
     flat_args = tree_util.tree_leaves(args)
-    bindings = dict(jax_util.safe_zip(names, flat_args))
+    bindings = dict(zip(names, flat_args, strict=True))
     return tree_util.tree_unflatten(out_tree, evaluate(rewritten, bindings))
 
   return wrapped

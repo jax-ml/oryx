@@ -57,7 +57,6 @@ __all__ = [
 ]
 
 safe_map = jax_util.safe_map
-safe_zip = jax_util.safe_zip
 Key = Any
 
 kwargs_rules = {}

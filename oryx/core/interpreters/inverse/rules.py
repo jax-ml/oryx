@@ -37,7 +37,6 @@ register_binary = inverse_core.register_binary
 InverseAndILDJ = inverse_core.InverseAndILDJ
 NDSlice = slc.NDSlice
 Slice = slc.Slice
-safe_zip = jax_util.safe_zip
 safe_map = jax_util.safe_map
 custom_inverse = ci.custom_inverse
 
@@ -125,7 +124,8 @@ def slice_ildj(incells, outcells, **params):
   outcell, = outcells
   start_indices = params['start_indices']
   limit_indices = params['limit_indices']
-  slices = tuple(Slice(s, l) for s, l in safe_zip(start_indices, limit_indices))
+  slices = tuple(Slice(s, l) for s, l in zip(start_indices, limit_indices,
+                                             strict=True))
   if outcell.top() and not incell.top():
     incells = [
         InverseAndILDJ(incell.aval, [
@@ -159,7 +159,7 @@ def concatenate_ildj(incells, outcells, *, dimension):
     inslcs = [[NDSlice.new(inval, ildj_)]
               for inval, ildj_ in zip(invals, ildjs)]
     incells = [InverseAndILDJ(old_incell.aval, inslc)
-               for old_incell, inslc in safe_zip(incells, inslcs)]
+               for old_incell, inslc in zip(incells, inslcs, strict=True)]
   return incells, outcells, None
 ildj_registry[lax.concatenate_p] = concatenate_ildj
 
@@ -167,7 +167,8 @@ ildj_registry[lax.concatenate_p] = concatenate_ildj
 def tie_all_ildj(incells, outcells, **params):
   del params
   new_cells = [
-      incell.join(outcell) for incell, outcell in safe_zip(incells, outcells)
+      incell.join(outcell)
+      for incell, outcell in zip(incells, outcells, strict=True)
   ]
   return new_cells, new_cells, None
 
