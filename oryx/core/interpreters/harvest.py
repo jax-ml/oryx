@@ -153,8 +153,6 @@ from jax.interpreters import batching
 from jax.interpreters import mlir
 from jax.interpreters import partial_eval as pe
 from jax.interpreters import pxla
-from jax.interpreters import xla
-from jax.lib import xla_client as xc
 import jax.numpy as jnp
 
 from oryx.core import primitive as prim
@@ -220,7 +218,7 @@ def _sow_batch_rule(batched_args, batch_dims, **params):
 
 
 batching.primitive_batchers[sow_p] = _sow_batch_rule
-xla.translations[sow_p] = lambda c, *args, **params: xc.ops.Tuple(c, args)
+mlir.register_lowering(sow_p, lambda c, *args, **kw: args)
 
 
 def sow(value, *, tag: Hashable, name: str, mode: str = 'strict', key=None):

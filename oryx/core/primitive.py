@@ -26,8 +26,6 @@ from jax.interpreters import ad
 from jax.interpreters import batching
 from jax.interpreters import mlir
 from jax.interpreters import partial_eval as pe
-from jax.interpreters import xla
-from jax.lib import xla_client as xc
 
 from oryx.core import trace_util
 
@@ -157,12 +155,6 @@ class FlatPrimitive(jax_core.Primitive):
 
     batching.primitive_batchers[self] = _batch
 
-    def _xla(c, *xla_args, **params):
-      translation = xla.lower_fun(self.impl, multiple_results=True)
-      return translation(c, *xla_args, **params)
-
-    xla.translations[self] = _xla
-
     def _mlir(c, *mlir_args, **params):
       lowering = mlir.lower_fun(self.impl, multiple_results=True)
       return lowering(c, *mlir_args, **params)
@@ -246,7 +238,8 @@ tie_all_p.multiple_results = True
 tie_all_p.def_impl(lambda *args: args)
 tie_all_p.def_abstract_eval(lambda *args: safe_map(  # pylint: disable=g-long-lambda
     abstract_arrays.raise_to_shaped, args))
-xla.translations[tie_all_p] = lambda c, *args: xc.ops.Tuple(c, args)
+
+mlir.register_lowering(tie_all_p, lambda c, *args: args)
 
 
 def _tie_all_batch_rule(batched_args, batch_dims):
