@@ -1019,7 +1019,7 @@ def _oryx_pjit_jaxpr(flat_fun, in_avals):
     jaxpr = jax_core.ClosedJaxpr(jaxpr, consts)
     final_consts = []
 
-  return pjit._ListWithW([jaxpr, final_consts, out_avals])  # pylint: disable=protected-access
+  return jaxpr, final_consts, out_avals
 
 
 def _calc_extra_inps(num_consts, params):
