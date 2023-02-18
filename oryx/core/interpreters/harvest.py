@@ -146,6 +146,7 @@ from jax import tree_util
 from jax import util as jax_util
 from jax._src import ad_checkpoint
 from jax._src import core as jax_core
+from jax._src import effects
 from jax._src import pjit
 from jax._src.lax import control_flow as lcf
 from jax.interpreters import ad
@@ -175,15 +176,15 @@ sow_p = jax_core.Primitive('sow')
 sow_p.multiple_results = True
 
 
-class _SowEffect:
+class SowEffect(effects.Effect):
   __repr__ = lambda _: 'Sow'
 
 
-SowEffect = _SowEffect()
+sow_effect = SowEffect()
 
-ad_checkpoint.remat_allowed_effects.add(SowEffect)
-lcf.allowed_effects.add(SowEffect)
-mlir.lowerable_effects.add(SowEffect)
+effects.remat_allowed_effects.add_type(SowEffect)
+effects.control_flow_allowed_effects.add_type(SowEffect)
+effects.lowerable_effects.add_type(SowEffect)
 
 
 @sow_p.def_impl
@@ -193,7 +194,7 @@ def _sow_impl(*args, **_):
 
 @sow_p.def_effectful_abstract_eval
 def _sow_abstract_eval(*avals, **_):
-  return avals, {SowEffect}
+  return avals, {sow_effect}
 
 
 def _sow_jvp(primals, tangents, **kwargs):
