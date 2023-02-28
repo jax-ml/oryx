@@ -385,9 +385,11 @@ class HarvestTrace(jax_core.Trace):
 
   post_process_map = post_process_call
 
-  def process_custom_jvp_call(self, primitive, fun, jvp, tracers):
+  def process_custom_jvp_call(self, primitive, fun, jvp, tracers, *,
+                              symbolic_zeros):
     context = trace_util.get_dynamic_context(self)
-    return context.process_custom_jvp_call(self, primitive, fun, jvp, tracers)
+    return context.process_custom_jvp_call(self, primitive, fun, jvp, tracers,
+                                           symbolic_zeros=symbolic_zeros)
 
   def post_process_custom_jvp_call(self, out_tracers, jvp_was_run):
     context = trace_util.get_dynamic_context(self)
@@ -468,7 +470,8 @@ class HarvestContext:
                                      params: Dict[str, Any], is_map: bool):
     raise NotImplementedError
 
-  def process_custom_jvp_call(self, trace, primitive, fun, jvp, tracers):
+  def process_custom_jvp_call(self, trace, primitive, fun, jvp, tracers, *,
+                              symbolic_zeros):
     raise NotImplementedError
 
   def post_process_custom_jvp_call(self, trace, out_tracers, jvp_was_run):
@@ -563,7 +566,8 @@ class ReapContext(HarvestContext):
           dict(name=k, tag=tag, tree=reap_tree, mode=metadata[k]['mode']))
     return out_tracers
 
-  def process_custom_jvp_call(self, trace, primitive, fun, jvp, tracers):
+  def process_custom_jvp_call(self, trace, primitive, fun, jvp, tracers, *,
+                              symbolic_zeros):
     context = trace_util.get_dynamic_context(trace)
     vals_in = [t.val for t in tracers]
     fun, aux1 = reap_eval(fun, trace, context.settings)
@@ -577,7 +581,7 @@ class ReapContext(HarvestContext):
       yield out_tracers, (None, None)
 
     jvp, aux2 = _jvp_subtrace(jvp, trace.main)
-    out_flat = primitive.bind(fun, jvp, *vals_in)
+    out_flat = primitive.bind(fun, jvp, *vals_in, symbolic_zeros=symbolic_zeros)
     fst, (out_tree, metadata) = lu.merge_linear_aux(aux1, aux2)
     if fst:
       out, reaps = tree_util.tree_unflatten(out_tree, out_flat)
@@ -1133,7 +1137,8 @@ class PlantContext(HarvestContext):
     out_vals = call_primitive.bind(f, *all_vals, name=name, **params)
     return jax_util.safe_map(trace.pure, out_vals)
 
-  def process_custom_jvp_call(self, trace, primitive, fun, jvp, tracers):
+  def process_custom_jvp_call(self, trace, primitive, fun, jvp, tracers, *,
+                              symbolic_zeros):
     vals_in = [t.val for t in tracers]
 
     @lu.transformation
@@ -1145,7 +1150,7 @@ class PlantContext(HarvestContext):
 
     fun = _subtrace(fun, trace.main)
     jvp = _subtrace(jvp, trace.main)
-    out_flat = primitive.bind(fun, jvp, *vals_in)
+    out_flat = primitive.bind(fun, jvp, *vals_in, symbolic_zeros=symbolic_zeros)
     out_tracers = jax_util.safe_map(trace.pure, out_flat)
     return out_tracers
 
