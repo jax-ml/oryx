@@ -616,7 +616,8 @@ class ReapContext(HarvestContext):
       yield out_tracers, (None, None)
 
     fwd, aux2 = _fwd_subtrace(fwd, trace.main)
-    bwd, _ = reap_eval(bwd, trace, context.settings)
+    bwd_ = reap_function(lu.wrap_init(bwd), trace.main, context.settings, True)
+    bwd = reap_wrapper_drop_aux(bwd_, trace).call_wrapped
     out_flat = primitive.bind(fun, fwd, bwd, *vals_in, out_trees=out_trees)
     fst, (out_tree, metadata) = lu.merge_linear_aux(aux1, aux2)
     if fst:
@@ -680,6 +681,14 @@ def reap_wrapper(trace: HarvestTrace, *args):
   out, reaps, metadata = yield (args,), {}
   out_flat, out_tree = tree_util.tree_flatten((out, reaps))
   yield out_flat, (out_tree, metadata)
+
+
+@lu.transformation
+def reap_wrapper_drop_aux(trace: HarvestTrace, *args):
+  del trace
+  out, reaps, _ = yield (args,), {}
+  out_flat, _ = tree_util.tree_flatten((out, reaps))
+  yield out_flat
 
 
 def call_and_reap(f,
