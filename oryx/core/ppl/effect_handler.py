@@ -272,9 +272,6 @@ def _pjit_effect_handler_rule(rules, state, invals, **params):
 
   in_shardings = (pjit._UNSPECIFIED,) * num_state + params['in_shardings']  # pylint: disable=protected-access
   donated_invars = (False,) * num_state + params['donated_invars']
-  in_positional_semantics = (
-      pxla._PositionalSemantics.GLOBAL,  # pylint: disable=protected-access
-  ) * num_state + params['in_positional_semantics']
   out_shardings = (pjit._UNSPECIFIED,) * num_state + params['out_shardings']  # pylint: disable=protected-access
 
   new_params = {
@@ -283,7 +280,6 @@ def _pjit_effect_handler_rule(rules, state, invals, **params):
       'in_shardings': in_shardings,
       'out_shardings': out_shardings,
       'donated_invars': donated_invars,
-      'in_positional_semantics': in_positional_semantics,
   }
 
   ans_state = pjit.pjit_p.bind(*state_invals, **new_params)

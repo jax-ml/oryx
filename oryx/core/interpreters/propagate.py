@@ -368,8 +368,7 @@ default_call_rules[harvest.nest_p] = functools.partial(call_rule,
 def _pjit_propagate_rule(incells, outcells, **params):
   """Propagate rule for pjit primitive."""
   # TODO(https://github.com/jax-ml/oryx/issues/29): Fix this rule so that it  # pylint: disable=g-bad-todo
-  # works correct for in_sharding, out_shardings, in_positional_semantics and
-  # donated_invars.
+  # works correct for in_sharding, out_shardings and donated_invars.
   if not any(pxla._is_unspecified(i) for i in params['in_shardings']):  # pylint: disable=protected-access
     raise ValueError('oryx only supports pjit which has no in_axis_resources '
                      'specified.')
@@ -386,7 +385,6 @@ def _pjit_propagate_rule(incells, outcells, **params):
 
   in_shardings = (pjit._UNSPECIFIED,) * len(flat_vals)  # pylint: disable=protected-access
   donated_invars = (False,) * len(flat_vals)
-  in_positional_semantics = (pxla._PositionalSemantics.GLOBAL,) * len(flat_vals)  # pylint: disable=protected-access
   out_shardings = (pjit._UNSPECIFIED,) * len(new_jaxpr.out_avals)  # pylint: disable=protected-access
 
   new_params = {
@@ -395,7 +393,6 @@ def _pjit_propagate_rule(incells, outcells, **params):
       'in_shardings': in_shardings,
       'out_shardings': out_shardings,
       'donated_invars': donated_invars,
-      'in_positional_semantics': in_positional_semantics,
   }
   flat_out = pjit.pjit_p.bind(*flat_vals, **new_params)
   return tree_util.tree_unflatten(out_tree(), flat_out)

@@ -1040,9 +1040,7 @@ def _calc_extra_inps(num_consts, params):
   in_shardings = (
       pjit._UNSPECIFIED,) * num_consts + params['in_shardings']  # pylint: disable=protected-access
   donated_invars = (False,) * num_consts + params['donated_invars']
-  in_positional_semantics = ((pxla._PositionalSemantics.GLOBAL,) * num_consts +  # pylint: disable=protected-access
-                             params['in_positional_semantics'])
-  return in_shardings, donated_invars, in_positional_semantics
+  return in_shardings, donated_invars
 
 
 def _reap_pjit_rule(trace, *tracers, **params):
@@ -1073,15 +1071,14 @@ def _reap_pjit_rule(trace, *tracers, **params):
 
   reap_jaxpr, final_consts, out_avals = _oryx_pjit_jaxpr(
       flat_fun, tuple(t.aval for t in tracers))
-  in_shardings, donated_invars, in_positional_semantics = _calc_extra_inps(
+  in_shardings, donated_invars = _calc_extra_inps(
       len(final_consts), params)
 
   new_params = {**params,
                 'jaxpr': reap_jaxpr,
                 'out_shardings': (pjit._UNSPECIFIED,) * len(out_avals),  # pylint: disable=protected-access
                 'in_shardings': in_shardings,
-                'donated_invars': donated_invars,
-                'in_positional_semantics': in_positional_semantics}
+                'donated_invars': donated_invars}
   outvals = pjit.pjit_p.bind(*final_consts, *invals, **new_params)
 
   outvals = jax_util.safe_map(trace.pure, outvals)
@@ -1488,15 +1485,14 @@ def _plant_pjit_rule(trace, *tracers, **params):
 
   planted_jaxpr, final_consts, out_avals = _oryx_pjit_jaxpr(
       flat_fun, tuple(t.aval for t in tracers))
-  in_shardings, donated_invars, in_positional_semantics = _calc_extra_inps(
+  in_shardings, donated_invars = _calc_extra_inps(
       len(final_consts), params)
 
   new_params = {**params,
                 'jaxpr': planted_jaxpr,
                 'out_shardings': (pjit._UNSPECIFIED,) * len(out_avals),    # pylint: disable=protected-access
                 'in_shardings': in_shardings,
-                'donated_invars': donated_invars,
-                'in_positional_semantics': in_positional_semantics}
+                'donated_invars': donated_invars}
   outvals = pjit.pjit_p.bind(*final_consts, *invals, **new_params)
 
   return jax_util.safe_map(trace.pure, outvals)
