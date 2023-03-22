@@ -395,10 +395,10 @@ class HarvestTrace(jax_core.Trace):
     return context.post_process_custom_jvp_call(self, out_tracers, jvp_was_run)
 
   def process_custom_vjp_call(self, primitive, fun, fwd, bwd, tracers,
-                              out_trees, symbolic_zeros):
+                              out_trees):
     context = trace_util.get_dynamic_context(self)
     return context.process_custom_vjp_call(self, primitive, fun, fwd, bwd,
-                                           tracers, out_trees, symbolic_zeros)
+                                           tracers, out_trees)
 
   def post_process_custom_vjp_call(self, out_tracers, params):
     context = trace_util.get_dynamic_context(self)
@@ -477,7 +477,7 @@ class HarvestContext:
     raise NotImplementedError
 
   def process_custom_vjp_call(self, trace, primitive, fun, fwd, bwd, tracers,
-                              out_trees, symbolic_zeros):
+                              out_trees):
     raise NotImplementedError
 
   def post_process_custom_vjp_call(self, trace, out_tracers, params):
@@ -601,7 +601,7 @@ class ReapContext(HarvestContext):
     return vals, lambda vals: vals
 
   def process_custom_vjp_call(self, trace, primitive, fun, fwd, bwd, tracers,
-                              out_trees, symbolic_zeros):
+                              out_trees):
     context = trace_util.get_dynamic_context(trace)
     vals_in = [t.val for t in tracers]
     fun, aux1 = reap_eval(fun, trace, context.settings)
@@ -617,8 +617,7 @@ class ReapContext(HarvestContext):
     fwd, aux2 = _fwd_subtrace(fwd, trace.main)
     bwd_ = reap_function(lu.wrap_init(bwd), trace.main, context.settings, True)
     bwd = reap_wrapper_drop_aux(bwd_, trace).call_wrapped
-    out_flat = primitive.bind(fun, fwd, bwd, *vals_in, out_trees=out_trees,
-                              symbolic_zeros=symbolic_zeros)
+    out_flat = primitive.bind(fun, fwd, bwd, *vals_in, out_trees=out_trees)
     fst, (out_tree, metadata) = lu.merge_linear_aux(aux1, aux2)
     if fst:
       out, reaps = tree_util.tree_unflatten(out_tree, out_flat)
@@ -1165,7 +1164,7 @@ class PlantContext(HarvestContext):
     return vals, lambda vals: vals
 
   def process_custom_vjp_call(self, trace, primitive, fun, fwd, bwd, tracers,
-                              out_trees, symbolic_zeros):
+                              out_trees):
     vals_in = [t.val for t in tracers]
 
     @lu.transformation
@@ -1178,8 +1177,7 @@ class PlantContext(HarvestContext):
     fun = _subtrace(fun, trace.main)
     fwd = _subtrace(fwd, trace.main)
     # We don't need to subtrace the `bwd` since it's triggered in another trace.
-    out_flat = primitive.bind(fun, fwd, bwd, *vals_in, out_trees=out_trees,
-                              symbolic_zeros=symbolic_zeros)
+    out_flat = primitive.bind(fun, fwd, bwd, *vals_in, out_trees=out_trees)
     return jax_util.safe_map(trace.pure, out_flat)
 
   def post_process_custom_vjp_call(self, trace, out_tracers, params):
