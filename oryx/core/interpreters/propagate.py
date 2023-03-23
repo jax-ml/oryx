@@ -38,7 +38,6 @@ from jax._src import core as jax_core
 from jax._src import pjit
 from jax.interpreters import partial_eval as pe
 from jax.interpreters import pxla
-from jax.interpreters import xla
 
 from oryx.core import pytree
 from oryx.core import trace_util
@@ -357,8 +356,6 @@ def call_rule(prim, incells, outcells, **params):
 
 
 default_call_rules = {}
-default_call_rules[xla.xla_call_p] = functools.partial(call_rule,
-                                                       xla.xla_call_p)
 default_call_rules[jax_core.call_p] = functools.partial(call_rule,
                                                         jax_core.call_p)
 default_call_rules[harvest.nest_p] = functools.partial(call_rule,

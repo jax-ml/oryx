@@ -108,7 +108,6 @@ from jax import util as jax_util
 from jax._src import core as jax_core
 from jax._src import pjit
 from jax.interpreters import partial_eval as pe
-from jax.interpreters import xla
 
 from oryx.core import trace_util
 
@@ -286,53 +285,6 @@ def _pjit_effect_handler_rule(rules, state, invals, **params):
 
 
 custom_effect_handler_rules[pjit.pjit_p] = _pjit_effect_handler_rule
-
-
-def xla_call_interpreter_rule(rules: Rules, state: Value,
-                              invals: Sequence[Value],
-                              call_jaxpr: jax_core.Jaxpr, *,
-                              donated_invars: Tuple[bool],
-                              **params: Any) -> Tuple[Value, Value]:
-  """Handles the `jax.jit` call primitive.
-
-  To handle the call primitive that appears when functions are JIT-ted, the rule
-  needs to do some additional bookkeeping for the `donated_invars`, which is a
-  tuple of `bool`s indicating whether or not the input value's buffer has been
-  donated. Since the recursive call adds additional inputs to the call primitive
-  the `donated_invars` need to be updated to indicate that the buffers have not
-  been donated. Otherwise, this rule behaves exactly like the
-  `default_call_interpreter_rule`.
-
-  Args:
-    rules: A `dict` that maps JAX primitives to functions that take in `(state,
-      *args)` and return `(output, new_state)`.
-    state: The interpreter `state` value at the time of calling evaluating the
-      call primitive.
-    invals: The input values to the call primitive.
-    call_jaxpr: The `jax_core.Jaxpr` that corresponds to the body of the call
-      primitive.
-    donated_invars: A tuple of `bool`s for each input to the call primitive
-      indicating if that input's buffer has been donated. See the documentation
-      for `jax.jit` for more details.
-    **params: The parameters of the call primitive.
-
-  Returns:
-    A tuple of the output of the call primitive and its output state.
-  """
-  # Adjust the `donated_invars` parameter to include `False` for each
-  # of the new inputs to the call primitive.
-  num_state = len(tree_util.tree_leaves(state))
-  return default_call_interpreter_rule(
-      xla.xla_call_p,
-      rules,
-      state,
-      invals,
-      call_jaxpr,
-      donated_invars=(False,) * num_state + donated_invars,
-      **params)
-
-
-register_call_rule(xla.xla_call_p, xla_call_interpreter_rule)
 
 
 def make_effect_handler(
