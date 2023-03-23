@@ -1,13 +1,13 @@
 [tool.poetry]
 name = "oryx"
-version = "0.2.4"
+version = "0.2.5"
 description = "Probabilistic programming and deep learning in JAX"
 authors = ["Google LLC"]
 license = "Apache 2.0"
 
 [tool.poetry.dependencies]
 python = "^3.10"
-jax = "^0.4.3"
+jax = "^0.4.6"
 tensorflow-probability = "^0.19.0"
 typing-extensions = "^4.4.0"
 
