@@ -260,12 +260,11 @@ nest_p.def_impl(_nest_impl)
 
 
 def _nest_lowering(ctx, *args, name, call_jaxpr, scope, **_):
-  return mlir._xla_call_lower(  # pylint: disable=protected-access
+  return mlir.core_call_lowering(
       ctx,
       *args,
       name=jax_util.wrap_name(name, f'nest[{scope}]'),
-      call_jaxpr=call_jaxpr,
-      donated_invars=(False,) * len(args))
+      call_jaxpr=call_jaxpr)
 
 
 mlir.register_lowering(nest_p, _nest_lowering)
