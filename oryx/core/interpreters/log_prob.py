@@ -15,7 +15,10 @@
 """Module for log_prob transformation."""
 from jax import random
 from jax import tree_util
+from jax.interpreters import pxla
 from jax._src import core as jax_core
+from jax._src import pjit
+from jax._src import util as jax_util
 
 from oryx.core import trace_util
 from oryx.core.interpreters import inverse
@@ -88,29 +91,29 @@ class FailedLogProb:
 # sentinel for being unable to compute a log_prob
 failed_log_prob = FailedLogProb()
 
+def reducer(env, eqn, curr_log_prob, new_log_prob):
+  if (isinstance(curr_log_prob, FailedLogProb)
+      or isinstance(new_log_prob, FailedLogProb)):
+    # If `curr_log_prob` is `None` that means we were unable to compute
+    # a log_prob elsewhere, so the propagate failed.
+    return failed_log_prob
+  if eqn.primitive in log_prob_registry and new_log_prob is None:
+    # We are unable to compute a log_prob for this primitive.
+    return failed_log_prob
+  if new_log_prob is not None:
+    cells = [env.read(var) for var in eqn.outvars]
+    # If the primitive is a sampling primitive, make sure to add the ILDJ
+    # terms.
+    if eqn.primitive in log_prob_registry:
+      ildjs = sum([cell.ildj.sum() for cell in cells if cell.top()])
+    else:
+      ildjs = 0.
+    return curr_log_prob + new_log_prob + ildjs
+  return curr_log_prob
+
 
 def log_prob_jaxpr(jaxpr, constcells, flat_incells, flat_outcells):
   """Runs log_prob propagation on a Jaxpr."""
-
-  def reducer(env, eqn, curr_log_prob, new_log_prob):
-    if (isinstance(curr_log_prob, FailedLogProb)
-        or isinstance(new_log_prob, FailedLogProb)):
-      # If `curr_log_prob` is `None` that means we were unable to compute
-      # a log_prob elsewhere, so the propagate failed.
-      return failed_log_prob
-    if eqn.primitive in log_prob_registry and new_log_prob is None:
-      # We are unable to compute a log_prob for this primitive.
-      return failed_log_prob
-    if new_log_prob is not None:
-      cells = [env.read(var) for var in eqn.outvars]
-      # If the primitive is a sampling primitive, make sure to add the ILDJ
-      # terms.
-      if eqn.primitive in log_prob_registry:
-        ildjs = sum([cell.ildj.sum() for cell in cells if cell.top()])
-      else:
-        ildjs = 0.
-      return curr_log_prob + new_log_prob + ildjs
-    return curr_log_prob
 
   # Re-use the InverseAndILDJ propagation but silently fail instead of
   # erroring when we hit a primitive we can't invert. We accumulate the log
@@ -140,3 +143,29 @@ def make_default_rule(prim):
       return incells, outcells, None
 
   return rule
+
+def pjit_rule(incells, outcells, **params):
+  """Registers log_prob rule for pjit."""
+  # TODO(https://github.com/jax-ml/oryx/issues/29): Fix this rule so that it  # pylint: disable=g-bad-todo
+  # works correct for in_sharding, out_shardings, in_positional_semantics and
+  # donated_invars.
+  if not any(pxla._is_unspecified(i) for i in params['in_shardings']):  # pylint: disable=protected-access
+    raise ValueError('oryx only supports pjit which has no in_axis_resources '
+                     'specified.')
+  if not any(pxla._is_unspecified(o) for o in params['out_shardings']):  # pylint: disable=protected-access
+    raise ValueError('oryx only supports pjit which has no out_axis_resources '
+                     'specified.')
+
+  jaxpr = params['jaxpr']
+  jaxpr_, consts = jaxpr.jaxpr, jaxpr.consts
+  num_consts = len(consts)
+  const_cells, incells = jax_util.split_list(incells, [num_consts])
+  env, state = propagate.propagate(
+      InverseAndILDJ, log_prob_rules, jaxpr_, const_cells,
+      incells, outcells, reducer=reducer, initial_state=0.)  # pytype: disable=wrong-arg-types
+  new_incells = [env.read(invar) for invar in jaxpr_.invars]
+  new_outcells = [env.read(outvar) for outvar in jaxpr_.outvars]
+  return const_cells + new_incells, new_outcells, state
+
+log_prob_rules[pjit.pjit_p] = pjit_rule
+

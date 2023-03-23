@@ -337,6 +337,8 @@ def call_rule(prim, incells, outcells, **params):
   return tree_util.tree_unflatten(out_tree, flat_out)
 
 
+from jax.interpreters import pxla
+
 default_call_rules = {}
 default_call_rules[xla.xla_call_p] = functools.partial(call_rule,
                                                        xla.xla_call_p)
