@@ -1,4 +1,4 @@
-# Copyright 2022 The oryx Authors.
+# Copyright 2023 The oryx Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -108,11 +108,11 @@ class CustomInverse:
         # `tree_util.tree_flatten` but if the user returns `None` (when
         # inversion is not possible), JAX will remove `None`s from the flattened
         # version and the number of `new_incells` will not match the old
-        # `incells`. We use the private `_replace_nones` feature in JAX to
+        # `incells`. We use the private `replace_nones` feature in JAX to
         # replace it with a sentinel that won't be removed when flattening.
         none_ = object()
-        new_invals = tree_util._replace_nones(none_, new_invals)  # pylint: disable=protected-access
-        new_ildjs = tree_util._replace_nones(none_, new_ildjs)  # pylint: disable=protected-access
+        new_invals = tree_util.replace_nones(none_, new_invals)
+        new_ildjs = tree_util.replace_nones(none_, new_ildjs)
         new_flat_invals = tree_util.tree_leaves(new_invals)
         new_flat_ildjs = tree_util.tree_leaves(new_ildjs)
         inslices = [
