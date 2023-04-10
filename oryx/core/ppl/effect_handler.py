@@ -107,6 +107,7 @@ from jax import tree_util
 from jax import util as jax_util
 from jax._src import core as jax_core
 from jax._src import pjit
+from jax._src import sharding_impls
 from jax.interpreters import partial_eval as pe
 
 from oryx.core import trace_util
@@ -268,9 +269,13 @@ def _pjit_effect_handler_rule(rules, state, invals, **params):
   in_avals = tuple(api_util.shaped_abstractify(i) for i in state_invals)
   new_jaxpr = _to_jaxpr(flat_fun, in_avals)
 
-  in_shardings = (pjit._UNSPECIFIED,) * num_state + params['in_shardings']  # pylint: disable=protected-access
+  in_shardings = (sharding_impls.UNSPECIFIED,) * num_state + params[
+      'in_shardings'
+  ]
   donated_invars = (False,) * num_state + params['donated_invars']
-  out_shardings = (pjit._UNSPECIFIED,) * num_state + params['out_shardings']  # pylint: disable=protected-access
+  out_shardings = (sharding_impls.UNSPECIFIED,) * num_state + params[
+      'out_shardings'
+  ]
 
   new_params = {
       **params,

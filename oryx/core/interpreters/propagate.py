@@ -36,6 +36,7 @@ from jax import linear_util as lu
 from jax import tree_util
 from jax._src import core as jax_core
 from jax._src import pjit
+from jax._src import sharding_impls
 from jax.interpreters import partial_eval as pe
 from jax.interpreters import pxla
 
@@ -380,9 +381,9 @@ def _pjit_propagate_rule(incells, outcells, **params):
   new_jaxpr = _to_jaxpr(
       f, tuple(api_util.shaped_abstractify(i) for i in flat_vals))
 
-  in_shardings = (pjit._UNSPECIFIED,) * len(flat_vals)  # pylint: disable=protected-access
+  in_shardings = (sharding_impls.UNSPECIFIED,) * len(flat_vals)
   donated_invars = (False,) * len(flat_vals)
-  out_shardings = (pjit._UNSPECIFIED,) * len(new_jaxpr.out_avals)  # pylint: disable=protected-access
+  out_shardings = (sharding_impls.UNSPECIFIED,) * len(new_jaxpr.out_avals)
 
   new_params = {
       **params,
