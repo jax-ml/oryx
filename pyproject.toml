@@ -6,7 +6,7 @@ authors = ["Google LLC"]
 license = "Apache 2.0"
 
 [tool.poetry.dependencies]
-python = "^3.10"
+python = "^3.8"
 jax = "^0.4.6"
 tensorflow-probability = "^0.19.0"
 typing-extensions = "^4.4.0"
