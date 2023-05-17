@@ -42,7 +42,7 @@ def get_shaped_aval(x):
   """Converts a JAX value type into a shaped abstract value."""
   if hasattr(x, 'dtype') and hasattr(x, 'shape'):
     return abstract_arrays.ShapedArray(
-        x.shape, dtypes.canonicalize_dtype(x.dtype))
+        x.shape, dtypes.canonicalize_dtype(x.dtype, allow_opaque_dtype=True))
   return abstract_arrays.raise_to_shaped(jax_core.get_aval(x))
 
 
