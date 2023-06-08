@@ -17,7 +17,6 @@ import functools
 from typing import Iterable
 
 import jax
-from jax import abstract_arrays
 from jax import tree_util
 from jax import util as jax_util
 from jax._src import core as jax_core
@@ -142,7 +141,7 @@ class InverseAndILDJ(Cell):
   def new(cls, val):
     val = np.array(val)
     aval = jax_core.get_aval(val)
-    aval = abstract_arrays.raise_to_shaped(aval)
+    aval = jax_core.raise_to_shaped(aval)
     ndslice = NDSlice.new(val, np.zeros_like(val))
     return InverseAndILDJ(aval, frozenset([ndslice]))
 
@@ -319,8 +318,8 @@ def map_ildj(prim, incells, outcells, **params):
   f, incells = incells[0], incells[1:]
 
   def slice_aval(aval):
-    return abstract_arrays.ShapedArray(aval.shape[1:], aval.dtype,
-                                       aval.weak_type)
+    return jax_core.ShapedArray(aval.shape[1:], aval.dtype,
+                                aval.weak_type)
 
   def add_slice(cell, old_cell):
     new_slices = [

@@ -16,7 +16,6 @@
 from absl.testing import absltest
 
 import jax
-from jax import abstract_arrays
 from jax import random
 from jax._src import core as jax_core
 from jax.interpreters import batching
@@ -61,7 +60,7 @@ def random_normal_impl(rng, *, batch_ndims):
 
 def random_normal_abstract(key, **_):
   del key
-  return abstract_arrays.ShapedArray((), jnp.float32)
+  return jax_core.ShapedArray((), jnp.float32)
 
 
 def random_normal_log_prob_rule(incells, outcells, *, batch_ndims, **_):

@@ -16,7 +16,6 @@
 import itertools as it
 from typing import Callable
 
-from jax import abstract_arrays
 from jax import api_util
 from jax import linear_util as lu
 from jax import tree_util
@@ -237,7 +236,7 @@ tie_all_p = jax_core.Primitive('tie_all')
 tie_all_p.multiple_results = True
 tie_all_p.def_impl(lambda *args: args)
 tie_all_p.def_abstract_eval(lambda *args: safe_map(  # pylint: disable=g-long-lambda
-    abstract_arrays.raise_to_shaped, args))
+    jax_core.raise_to_shaped, args))
 
 mlir.register_lowering(tie_all_p, lambda c, *args: args)
 

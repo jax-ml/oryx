@@ -15,7 +15,6 @@
 """Tests for oryx.core.ppl.effect_handler."""
 from absl.testing import absltest
 import jax
-from jax import abstract_arrays
 from jax import random
 import jax.numpy as np
 
@@ -40,7 +39,7 @@ def _random_normal_impl(key, loc, scale):
 @random_normal_p.def_abstract_eval
 def _random_normal_abstract(key, loc, scale):
   del key, loc, scale
-  return [abstract_arrays.ShapedArray((), np.float32)]
+  return [jax.core.ShapedArray((), np.float32)]
 
 
 class EffectHandlerTest(test_util.TestCase):
