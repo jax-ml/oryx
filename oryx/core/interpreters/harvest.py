@@ -138,7 +138,6 @@ import dataclasses
 import functools
 from typing import Any, Callable, Dict, FrozenSet, Hashable, Iterable, List, Optional, Tuple, Union
 
-from jax import abstract_arrays
 from jax import api_util
 from jax import lax
 from jax import linear_util as lu
@@ -419,7 +418,7 @@ class HarvestTracer(jax_core.Tracer):
 
   @property
   def aval(self):
-    return abstract_arrays.raise_to_shaped(jax_core.get_aval(self.val))
+    return jax_core.raise_to_shaped(jax_core.get_aval(self.val))
 
   def full_lower(self):
     return self
@@ -512,7 +511,7 @@ class ReapContext(HarvestContext):
       raise ValueError(f'Variable has already been reaped: {name}')
     avals = tree_util.tree_unflatten(
         tree,
-        [abstract_arrays.raise_to_shaped(jax_core.get_aval(v)) for v in values])
+        [jax_core.raise_to_shaped(jax_core.get_aval(v)) for v in values])
     self.reaps[name] = Reap(
         tree_util.tree_unflatten(tree, values), dict(mode=mode, aval=avals))
     return values
@@ -781,7 +780,7 @@ def _get_harvest_metadata(closed_jaxpr, settings, *args):
     flat_args, in_tree = tree_util.tree_flatten(args)
     flat_fun, out_tree = api_util.flatten_fun_nokwargs(fun, in_tree)
     in_avals = jax_util.safe_map(
-        lambda a: abstract_arrays.raise_to_shaped(jax_core.get_aval(a)),
+        lambda a: jax_core.raise_to_shaped(jax_core.get_aval(a)),
         flat_args)
     pe.trace_to_jaxpr_final(flat_fun, in_avals)
     metadata = aux()

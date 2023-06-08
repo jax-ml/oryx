@@ -17,7 +17,6 @@ import contextlib
 import threading
 from typing import Any, Dict, Generator, List
 
-from jax import abstract_arrays
 from jax import api_util
 from jax import linear_util as lu
 from jax import tree_util
@@ -41,9 +40,9 @@ safe_map = jax_util.safe_map
 def get_shaped_aval(x):
   """Converts a JAX value type into a shaped abstract value."""
   if hasattr(x, 'dtype') and hasattr(x, 'shape'):
-    return abstract_arrays.ShapedArray(
+    return jax_core.ShapedArray(
         x.shape, dtypes.canonicalize_dtype(x.dtype, allow_opaque_dtype=True))
-  return abstract_arrays.raise_to_shaped(jax_core.get_aval(x))
+  return jax_core.raise_to_shaped(jax_core.get_aval(x))
 
 
 def pv_like(x, abstract=True):
