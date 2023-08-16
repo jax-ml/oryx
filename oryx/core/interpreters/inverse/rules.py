@@ -17,6 +17,7 @@
 This module also monkey patches `jax.nn.sigmoid`, `jax.scipy.special.logit`, and
 `jax.scipy.special.expit` to have custom inverses.
 """
+import inspect
 import jax
 from jax import lax
 from jax import util as jax_util
@@ -24,12 +25,23 @@ import jax.numpy as np
 
 from oryx.core import primitive
 from oryx.core.interpreters import harvest
+from oryx.core.interpreters.inverse import bijector_extensions
 from oryx.core.interpreters.inverse import core as inverse_core
 from oryx.core.interpreters.inverse import custom_inverse as ci
 from oryx.core.interpreters.inverse import slice as slc
+from tensorflow_probability.substrates import jax as tfp  # pylint: disable=g-importing-member
+
+tfb = tfp.bijectors
 
 __all__ = [
 ]
+
+# Register all bijectors from TFP.
+for name in tfb.__all__:
+  bij = getattr(tfb, name)
+  if inspect.isclass(bij) and issubclass(bij, tfb.Bijector):
+    if bij is not tfb.Bijector:
+      bijector_extensions.patch_bijector(bij)
 
 ildj_registry = inverse_core.ildj_registry
 register_elementwise = inverse_core.register_elementwise

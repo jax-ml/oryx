@@ -15,18 +15,13 @@
 """Module for probability bijectors and related functions."""
 import inspect
 
-from oryx.bijectors import bijector_extensions
-from tensorflow_probability.substrates import jax as tfp
+from tensorflow_probability.substrates import jax as tfp  # pylint: disable=g-importing-member
 
 tfb = tfp.bijectors
 
 __all__ = tfb.__all__
-
 for name in __all__:
   bij = getattr(tfb, name)
-  if inspect.isclass(bij) and issubclass(bij, tfb.Bijector):
-    if bij is not tfb.Bijector:
-      bij = bijector_extensions.make_type(bij)
   locals()[name] = bij
 
 del tfb
