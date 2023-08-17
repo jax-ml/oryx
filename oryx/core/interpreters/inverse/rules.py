@@ -229,6 +229,14 @@ def logit_ildj(y):
   return -jax.nn.softplus(-y) - jax.nn.softplus(y)
 
 
+def softplus_inv(y):
+  return np.log(-np.expm1(-y)) + y
+
+
+def softplus_ildj(y):
+  return -np.log1p(-np.exp(-y))
+
+
 def convert_element_type_ildj(incells, outcells, *, new_dtype, **params):
   """InverseAndILDJ rule for convert_element_type primitive."""
   incell, = incells
@@ -249,8 +257,11 @@ ildj_registry[lax.convert_element_type_p] = convert_element_type_ildj
 jax.scipy.special.expit = custom_inverse(jax.scipy.special.expit)
 jax.scipy.special.logit = custom_inverse(jax.scipy.special.logit)
 jax.nn.sigmoid = jax.scipy.special.expit
+jax.nn.softplus = custom_inverse(jax.nn.softplus)
 jax.scipy.special.expit.def_inverse_unary(f_inv=jax.scipy.special.logit,
                                           f_ildj=expit_ildj)
 jax.scipy.special.logit.def_inverse_unary(f_inv=jax.scipy.special.expit,
                                           f_ildj=logit_ildj)
+jax.nn.softplus.def_inverse_unary(f_inv=softplus_inv,
+                                  f_ildj=softplus_ildj)
 

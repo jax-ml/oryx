@@ -324,6 +324,15 @@ class InverseTest(test_util.TestCase):
     np.testing.assert_allclose(x, jnp.ones((2, 2)))
     np.testing.assert_allclose(ildj_, 0.)
 
+  def test_softplus_inverse_ildj(self):
+    softplus_inv = core.inverse_and_ildj(jax.nn.softplus)
+    softplus_bij = tfb.Softplus()
+    x, ildj = softplus_inv(0.1)
+    np.testing.assert_allclose(x,
+                               softplus_bij.inverse(0.1))
+    np.testing.assert_allclose(ildj,
+                               softplus_bij.inverse_log_det_jacobian(0.1))
+
   def test_sigmoid_ildj(self):
 
     def naive_sigmoid(x):
