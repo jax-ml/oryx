@@ -131,6 +131,7 @@ reap(f, tag='intermediate')(5.)  # ==> {'y': 6.}
 * Planting values into a `pmap` is partially working. Harvest tries to plant all
   the values, assuming they have a leading map dimension.
 """
+
 from __future__ import annotations
 
 import collections
@@ -140,7 +141,6 @@ from typing import Any, Callable, Dict, FrozenSet, Hashable, Iterable, List, Opt
 
 from jax import api_util
 from jax import lax
-from jax import linear_util as lu
 from jax import tree_util
 from jax import util as jax_util
 from jax._src import ad_checkpoint
@@ -149,14 +149,15 @@ from jax._src import effects
 from jax._src import pjit
 from jax._src import sharding_impls
 from jax._src.lax import control_flow as lcf
+import jax.extend.linear_util as lu
 from jax.interpreters import ad
 from jax.interpreters import batching
 from jax.interpreters import mlir
 from jax.interpreters import partial_eval as pe
 import jax.numpy as jnp
-
 from oryx.core import primitive as prim
 from oryx.core import trace_util
+
 
 __all__ = [
     'HarvestTrace',
