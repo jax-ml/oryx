@@ -32,11 +32,11 @@ import itertools as it
 from typing import Any, Callable, Dict, List, Tuple, Type, Union
 
 from jax import api_util
-from jax import linear_util as lu
 from jax import tree_util
 from jax._src import core as jax_core
 from jax._src import pjit
 from jax._src import sharding_impls
+from jax.extend import linear_util as lu
 from jax.interpreters import partial_eval as pe
 from jax.interpreters import pxla
 

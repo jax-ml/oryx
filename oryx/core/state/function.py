@@ -39,11 +39,11 @@ import types
 from typing import Any, Dict, Iterable, Optional
 
 import jax
-from jax import linear_util as lu
 from jax import random
 from jax import tree_util
 from jax import util as jax_util
 from jax._src import core as jax_core
+from jax.extend import linear_util as lu
 
 from oryx.core import kwargs_util
 from oryx.core import trace_util

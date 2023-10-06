@@ -18,11 +18,11 @@ import threading
 from typing import Any, Dict, Generator, List
 
 from jax import api_util
-from jax import linear_util as lu
 from jax import tree_util
 from jax import util as jax_util
 from jax._src import core as jax_core
 from jax._src import dtypes
+from jax.extend import linear_util as lu
 from jax.interpreters import partial_eval as pe
 
 __all__ = [

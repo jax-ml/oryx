@@ -121,9 +121,9 @@ import itertools as it
 
 import jax
 from jax import lax
-from jax import linear_util as lu
 from jax import tree_util
 from jax.example_libraries import stax
+from jax.extend import linear_util as lu
 from jax.interpreters import batching
 
 from oryx.core import kwargs_util
