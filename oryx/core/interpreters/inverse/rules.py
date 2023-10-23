@@ -40,7 +40,7 @@ __all__ = [
 for name in tfb.__all__:
   bij = getattr(tfb, name)
   if inspect.isclass(bij) and issubclass(bij, tfb.Bijector):
-    if bij is not tfb.Bijector:
+    if bij not in {tfb.Bijector, tfb.Composition}:
       bijector_extensions.patch_bijector(bij)
 
 ildj_registry = inverse_core.ildj_registry

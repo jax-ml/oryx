@@ -29,6 +29,7 @@ from oryx.internal import test_util
 from tensorflow_probability.substrates import jax as tfp
 
 tfb = tfp.bijectors
+tfd = tfp.distributions
 
 del rules  # needed for registration only
 
@@ -466,6 +467,14 @@ class InverseTest(test_util.TestCase):
 
     f_ildj = core.ildj(f)
     np.testing.assert_allclose(f_ildj(3.), jnp.log(2.) + jnp.log(3.))
+
+  def test_joint_inverse(self):
+    dist = tfd.JointDistributionNamed(
+        {'a': tfd.JointDistributionNamed({'b': tfd.HalfNormal(10.)})})
+    bij = dist.experimental_default_event_space_bijector()
+
+    # This used to throw an exception due to patching the bijector.
+    bij(dist.sample(seed=jax.random.PRNGKey(0)))
 
 
 if __name__ == '__main__':
