@@ -1,4 +1,4 @@
-# Copyright 2023 The oryx Authors.
+# Copyright 2024 The oryx Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -728,6 +728,33 @@ class ControlFlowTest(test_util.TestCase):
     self.assertListEqual(['x'], list(variables.keys()))
     np.testing.assert_allclose(variables['x'], true_out[-1])
 
+  @parameterized.named_parameters(('scan', True), ('while_loop', False))
+  def test_can_reap_and_plant_looped_values_in_default_clobber_mode(
+      self, static_length
+  ):
+    length = 5
+
+    def body(index, x):
+      x = x + index
+      x = jax.lax.switch(
+          index,
+          [
+              lambda i=i: variable(x, name=f'x{i}', mode='default_clobber')
+              for i in range(length + 1)
+          ],
+      )
+      return x
+
+    def f(upper, init):
+      return lax.fori_loop(0, length if static_length else upper, body, init)
+
+    out, variables = harvest_variables(f)(dict(x3=0.5), length, 1.)
+    np.testing.assert_allclose(out, 0.5 + 4)
+    default = 0.
+    self.assertDictEqual(
+        dict(x0=1., x1=2., x2=4., x4=out, x5=default), variables
+    )
+
   def test_non_clobber_mode_in_while_loop_should_error_with_reap_and_plant(
       self):
 
@@ -844,11 +871,11 @@ class ControlFlowTest(test_util.TestCase):
       return lax.cond(pred, true_fun, false_fun, x)
 
     with self.assertRaisesRegex(
-        ValueError, 'Mismatching number of `sow`s between branches.'):
+        ValueError, 'Missing sow in branch: \'y\''):
       reap_variables(f2)(True, 1.)
 
     with self.assertRaisesRegex(
-        ValueError, 'Mismatching number of `sow`s between branches.'):
+        ValueError, 'Missing sow in branch: \'y\''):
       plant_variables(f2)({}, True, 1.)
 
     def f3(pred, x):
@@ -893,6 +920,29 @@ class ControlFlowTest(test_util.TestCase):
     self.assertEqual(out, 6.)
     self.assertDictEqual(reaps, dict(x=3.))
 
+  def test_can_reap_from_mismatching_branches_of_default_clobber_cond(self):
+
+    def f(pred, x):
+
+      @jax.jit
+      def true_fun(x):
+        x = variable(x, name='x', mode='default_clobber')
+        return x + 2.
+
+      def false_fun(x):
+        x = variable(x + 2., name='y', mode='default_clobber')
+        return x + 3.
+
+      return lax.cond(pred, true_fun, false_fun, x)
+
+    out, reaps = call_and_reap_variables(f)(True, 1.)
+    self.assertEqual(out, 3.)
+    self.assertDictEqual(reaps, dict(x=1., y=0.))
+
+    out, reaps = call_and_reap_variables(f)(False, 1.)
+    self.assertEqual(out, 6.)
+    self.assertDictEqual(reaps, dict(y=3., x=0.))
+
   def test_can_plant_values_into_either_branch_of_cond(self):
 
     def f(pred, x):
@@ -911,6 +961,27 @@ class ControlFlowTest(test_util.TestCase):
     self.assertEqual(out, 6.)
 
     out = plant_variables(f)(dict(x=4.), False, 1.)
+    self.assertEqual(out, 7.)
+
+  def test_can_plant_into_mismatching_branches_of_default_clobber_cond(self):
+
+    def f(pred, x):
+
+      @jax.jit
+      def true_fun(x):
+        x = variable(x, name='x', mode='default_clobber')
+        return x + 2.
+
+      def false_fun(x):
+        x = variable(x + 2., name='y', mode='default_clobber')
+        return x + 3.
+
+      return lax.cond(pred, true_fun, false_fun, x)
+
+    out = plant_variables(f)(dict(x=4.), True, 1.)
+    self.assertEqual(out, 6.)
+
+    out = plant_variables(f)(dict(y=4.), False, 1.)
     self.assertEqual(out, 7.)
 
   def test_can_reap_values_from_any_branch_in_switch(self):
