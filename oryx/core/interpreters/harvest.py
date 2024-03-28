@@ -790,7 +790,7 @@ def _get_harvest_metadata(closed_jaxpr, settings, *args):
 
 
 def _reap_scan_rule(trace: HarvestTrace, *tracers, length, reverse, jaxpr,
-                    num_consts, num_carry, linear, unroll):
+                    num_consts, num_carry, linear, unroll, _split_transpose):
   """Reaps the body of a scan to pull out `clobber` and `append` sows."""
 
   const_tracers, carry_tracers, xs_tracers = jax_util.split_list(
@@ -858,7 +858,8 @@ def _reap_scan_rule(trace: HarvestTrace, *tracers, length, reverse, jaxpr,
       num_carry=len(carry_vals + dummy_reap_carry_vals),
       linear=(linear[:len(consts)] + (False,) * len(dummy_reap_carry_vals) +
               linear[len(consts):]),
-      unroll=unroll)
+      unroll=unroll,
+      _split_transpose=_split_transpose)
   (carry_out,
    carry_reaps), (ys, ys_reaps) = tree_util.tree_unflatten(out_tree, out)
   (carry_out, carry_reaps), (ys, ys_reaps) = tree_util.tree_map(
@@ -1271,7 +1272,7 @@ def plant(f,
 
 
 def _plant_scan_rule(trace: HarvestTrace, *tracers, length, reverse, jaxpr,
-                     num_consts, num_carry, linear, unroll):
+                     num_consts, num_carry, linear, unroll, _split_transpose):
   """Injects values into a scan according to their sow mode."""
 
   const_tracers, carry_tracers, xs_tracers = jax_util.split_list(
@@ -1340,7 +1341,8 @@ def _plant_scan_rule(trace: HarvestTrace, *tracers, length, reverse, jaxpr,
       num_consts=len(consts),
       num_carry=num_carry,
       linear=linear + (False,) * len(plant_vals),
-      unroll=unroll)
+      unroll=unroll,
+      _split_transpose=_split_transpose)
   return out
 
 
