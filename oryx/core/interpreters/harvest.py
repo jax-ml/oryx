@@ -1041,7 +1041,8 @@ def _calc_extra_inps(num_consts, params):
   in_shardings = (
       sharding_impls.UNSPECIFIED,) * num_consts + params['in_shardings']
   donated_invars = (False,) * num_consts + params['donated_invars']
-  return in_shardings, donated_invars
+  in_layouts = (None,) * num_consts + params['in_layouts']
+  return in_shardings, donated_invars, in_layouts
 
 
 def _reap_pjit_rule(trace, *tracers, **params):
@@ -1078,14 +1079,18 @@ def _reap_pjit_rule(trace, *tracers, **params):
 
   reap_jaxpr, final_consts, out_avals = _oryx_pjit_jaxpr(
       flat_fun, tuple(t.aval for t in tracers))
-  in_shardings, donated_invars = _calc_extra_inps(
+  in_shardings, donated_invars, in_layouts = _calc_extra_inps(
       len(final_consts), params)
 
-  new_params = {**params,
-                'jaxpr': reap_jaxpr,
-                'out_shardings': (sharding_impls.UNSPECIFIED,) * len(out_avals),
-                'in_shardings': in_shardings,
-                'donated_invars': donated_invars}
+  new_params = {
+      **params,
+      'jaxpr': reap_jaxpr,
+      'out_shardings': (sharding_impls.UNSPECIFIED,) * len(out_avals),
+      'in_shardings': in_shardings,
+      'donated_invars': donated_invars,
+      'in_layouts': in_layouts,
+      'out_layouts': (None,) * len(out_avals)
+  }
   outvals = pjit.pjit_p.bind(*final_consts, *invals, **new_params)
 
   outvals = jax_util.safe_map(trace.pure, outvals)
@@ -1500,14 +1505,18 @@ def _plant_pjit_rule(trace, *tracers, **params):
 
   planted_jaxpr, final_consts, out_avals = _oryx_pjit_jaxpr(
       flat_fun, tuple(t.aval for t in tracers))
-  in_shardings, donated_invars = _calc_extra_inps(
+  in_shardings, donated_invars, in_layouts = _calc_extra_inps(
       len(final_consts), params)
 
-  new_params = {**params,
-                'jaxpr': planted_jaxpr,
-                'out_shardings': (sharding_impls.UNSPECIFIED,) * len(out_avals),
-                'in_shardings': in_shardings,
-                'donated_invars': donated_invars}
+  new_params = {
+      **params,
+      'jaxpr': planted_jaxpr,
+      'out_shardings': (sharding_impls.UNSPECIFIED,) * len(out_avals),
+      'in_shardings': in_shardings,
+      'donated_invars': donated_invars,
+      'in_layouts': in_layouts,
+      'out_layouts': (None,) * len(out_avals),
+  }
   outvals = pjit.pjit_p.bind(*final_consts, *invals, **new_params)
 
   return jax_util.safe_map(trace.pure, outvals)

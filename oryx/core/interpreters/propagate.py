@@ -384,6 +384,8 @@ def _pjit_propagate_rule(incells, outcells, **params):
   in_shardings = (sharding_impls.UNSPECIFIED,) * len(flat_vals)
   donated_invars = (False,) * len(flat_vals)
   out_shardings = (sharding_impls.UNSPECIFIED,) * len(new_jaxpr.out_avals)
+  in_layouts = (None,) * len(flat_vals)
+  out_layouts = (None,) * len(new_jaxpr.out_avals)
 
   new_params = {
       **params,
@@ -391,6 +393,8 @@ def _pjit_propagate_rule(incells, outcells, **params):
       'in_shardings': in_shardings,
       'out_shardings': out_shardings,
       'donated_invars': donated_invars,
+      'in_layouts': in_layouts,
+      'out_layouts': out_layouts,
   }
   flat_out = pjit.pjit_p.bind(*flat_vals, **new_params)
   return tree_util.tree_unflatten(out_tree(), flat_out)

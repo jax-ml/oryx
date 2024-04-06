@@ -276,6 +276,8 @@ def _pjit_effect_handler_rule(rules, state, invals, **params):
   out_shardings = (sharding_impls.UNSPECIFIED,) * num_state + params[
       'out_shardings'
   ]
+  in_layouts = (None,) * num_state + params['in_layouts']
+  out_layouts = (None,) * num_state + params['out_layouts']
 
   new_params = {
       **params,
@@ -283,6 +285,8 @@ def _pjit_effect_handler_rule(rules, state, invals, **params):
       'in_shardings': in_shardings,
       'out_shardings': out_shardings,
       'donated_invars': donated_invars,
+      'in_layouts': in_layouts,
+      'out_layouts': out_layouts,
   }
 
   ans_state = pjit.pjit_p.bind(*state_invals, **new_params)
