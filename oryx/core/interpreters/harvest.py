@@ -508,8 +508,9 @@ class ReapContext(HarvestContext):
   def handle_sow(self, *values, name, tag, tree, mode):
     """Stores a sow in the reaps dictionary."""
     del tag
-    if name in self.reaps:
-      raise ValueError(f'Variable has already been reaped: {name}')
+    if prev_reap := self.reaps.get(name):
+      if mode != 'clobber' or prev_reap.metadata['mode'] != 'clobber':
+        raise ValueError(f'Variable has already been reaped: {name}')
     avals = tree_util.tree_unflatten(
         tree,
         [jax_core.raise_to_shaped(jax_core.get_aval(v)) for v in values])

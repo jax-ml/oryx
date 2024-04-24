@@ -682,7 +682,7 @@ class ControlFlowTest(test_util.TestCase):
     def f(init):
       return lax.scan(body, init, jnp.arange(5.))
 
-    (carry, out), variables = harvest_variables(f)({}, 1.)
+    (carry, out), variables = (harvest_variables(f))({}, 1.)
     true_out = jnp.array([1., 2., 4., 7., 11.])
     np.testing.assert_allclose(carry, 11.)
     np.testing.assert_allclose(out, true_out)
@@ -712,7 +712,10 @@ class ControlFlowTest(test_util.TestCase):
     self.assertListEqual(['x'], list(variables.keys()))
     np.testing.assert_allclose(variables['x'], true_out)
 
-  def test_harvest_clobber_mode_in_scan_should_return_final_value(self):
+  @parameterized.parameters(False, True)
+  def test_harvest_clobber_mode_in_scan_should_return_final_value(
+      self, disable_jit
+  ):
 
     def body(carry, x):
       x = variable(x + carry, name='x', mode='clobber')
@@ -721,9 +724,11 @@ class ControlFlowTest(test_util.TestCase):
     def f(init):
       return lax.scan(body, init, jnp.arange(5.))
 
-    (carry, out), variables = harvest_variables(f)({}, 1.)
-    true_out = jnp.array([1., 2., 4., 7., 11.])
-    np.testing.assert_allclose(carry, 11.)
+    (carry, out), variables = jax.disable_jit(disable_jit)(
+        harvest_variables(f)
+    )({}, 1.0)
+    true_out = jnp.array([1.0, 2.0, 4.0, 7.0, 11.0])
+    np.testing.assert_allclose(carry, 11.0)
     np.testing.assert_allclose(out, true_out)
     self.assertListEqual(['x'], list(variables.keys()))
     np.testing.assert_allclose(variables['x'], true_out[-1])
@@ -753,7 +758,8 @@ class ControlFlowTest(test_util.TestCase):
         'Must use clobber mode for \'x\' inside of a `while_loop`.'):
       plant_variables(f)(dict(x=4.), (0, 0.))
 
-  def test_can_reap_final_values_from_while_loop(self):
+  @parameterized.parameters(False, True)
+  def test_can_reap_final_values_from_while_loop(self, disable_jit):
 
     def cond(carry):
       i, _ = carry
@@ -767,11 +773,14 @@ class ControlFlowTest(test_util.TestCase):
     def f(init):
       return lax.while_loop(cond, body, init)
 
-    reaps = reap_variables(f)((0, 0.))
+    reaps = jax.disable_jit(disable_jit)(reap_variables(f))((0, 0.))
 
     self.assertDictEqual(reaps, dict(x=4.))
 
-  def test_can_plant_values_into_each_iteration_of_while_loop(self):
+  @parameterized.parameters(False, True)
+  def test_can_plant_values_into_each_iteration_of_while_loop(
+      self, disable_jit
+  ):
 
     def cond(carry):
       i, _, _ = carry
@@ -785,11 +794,14 @@ class ControlFlowTest(test_util.TestCase):
     def f(init):
       return lax.while_loop(cond, body, init)
 
-    out = plant_variables(f)(dict(x=5.), (0, 0., 0.))
+    out = jax.disable_jit(disable_jit)(plant_variables(f))(
+        dict(x=5.0), (0, 0.0, 0.0)
+    )
 
     self.assertTupleEqual(out, (5, 6., 25.))
 
-  def test_can_reap_and_plant_values_into_while_loop(self):
+  @parameterized.parameters(False, True)
+  def test_can_reap_and_plant_values_into_while_loop(self, disable_jit):
 
     def cond(carry):
       i, _, _ = carry
@@ -804,8 +816,9 @@ class ControlFlowTest(test_util.TestCase):
     def f(init):
       return lax.while_loop(cond, body, init)
 
-    out, reaps = call_and_reap_variables(plant_variables(f))(dict(x=5.),
-                                                             (0, 0., 0.))
+    out, reaps = jax.disable_jit(disable_jit)(
+        call_and_reap_variables(plant_variables(f))
+    )(dict(x=5.0), (0, 0.0, 0.0))
 
     self.assertTupleEqual(out, (5, 6., 25.))
     self.assertDictEqual(reaps, dict(y=20.))
