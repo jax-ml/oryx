@@ -48,6 +48,7 @@ from oryx.internal import test_util
 config.update('jax_traceback_filtering', 'off')
 
 sow = harvest.sow
+sow_cond = harvest.sow_cond
 reap = harvest.reap
 call_and_reap = harvest.call_and_reap
 plant = harvest.plant
@@ -733,6 +734,36 @@ class ControlFlowTest(test_util.TestCase):
     self.assertListEqual(['x'], list(variables.keys()))
     np.testing.assert_allclose(variables['x'], true_out[-1])
 
+  @parameterized.named_parameters(
+      ('scan', True),
+      ('while_loop', False),
+      ('scan_disable_jit', True, True),
+      ('while_loop_disable_jit', False, True),
+  )
+  def test_can_reap_and_plant_looped_values_in_cond_clobber_mode(
+      self, static_length, disable_jit=False
+  ):
+    length = 5
+
+    def body(index, x):
+      x = x + index
+      values = []
+      for i, pred in enumerate(index == np.arange(length + 1)):
+        values.append(sow_cond(x, pred, name=f'x{i}', tag='variable'))
+      return jax.lax.select_n(index, *values)
+
+    def f(upper, init):
+      return lax.fori_loop(0, length if static_length else upper, body, init)
+
+    out, variables = jax.disable_jit(disable_jit)(harvest_variables(f))(
+        dict(x3=0.5), length, 1.
+    )
+    np.testing.assert_allclose(out, 0.5 + 4)
+    default = 0.
+    self.assertDictEqual(
+        dict(x0=1., x1=2., x2=4., x4=out, x5=default), variables
+    )
+
   def test_non_clobber_mode_in_while_loop_should_error_with_reap_and_plant(
       self):
 
@@ -750,12 +781,16 @@ class ControlFlowTest(test_util.TestCase):
 
     with self.assertRaisesRegex(
         ValueError,
-        'Must use clobber mode for \'x\' inside of a `while_loop`.'):
-      reap_variables(f)((0, 0.))
+        "Must use clobber or cond_clobber mode for 'x' inside of a"
+        ' `while_loop`.',
+    ):
+      reap_variables(f)((0, 0.0))
 
     with self.assertRaisesRegex(
         ValueError,
-        'Must use clobber mode for \'x\' inside of a `while_loop`.'):
+        "Must use clobber or cond_clobber mode for 'x' inside of a"
+        ' `while_loop`.',
+    ):
       plant_variables(f)(dict(x=4.), (0, 0.))
 
   @parameterized.parameters(False, True)
