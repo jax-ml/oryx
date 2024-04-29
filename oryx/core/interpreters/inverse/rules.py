@@ -258,10 +258,10 @@ jax.scipy.special.expit = custom_inverse(jax.scipy.special.expit)
 jax.scipy.special.logit = custom_inverse(jax.scipy.special.logit)
 jax.nn.sigmoid = jax.scipy.special.expit
 jax.nn.softplus = custom_inverse(jax.nn.softplus)
-jax.scipy.special.expit.def_inverse_unary(f_inv=jax.scipy.special.logit,
-                                          f_ildj=expit_ildj)
-jax.scipy.special.logit.def_inverse_unary(f_inv=jax.scipy.special.expit,
-                                          f_ildj=logit_ildj)
-jax.nn.softplus.def_inverse_unary(f_inv=softplus_inv,
-                                  f_ildj=softplus_ildj)
-
+jax.scipy.special.expit.def_inverse_unary(
+    f_inv=jax.scipy.special.logit, f_ildj=expit_ildj
+)  # pytype: disable=attribute-error
+jax.scipy.special.logit.def_inverse_unary(
+    f_inv=jax.scipy.special.expit, f_ildj=logit_ildj
+)  # pytype: disable=attribute-error
+jax.nn.softplus.def_inverse_unary(f_inv=softplus_inv, f_ildj=softplus_ildj)  # pytype: disable=attribute-error
