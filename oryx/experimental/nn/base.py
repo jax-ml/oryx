@@ -336,7 +336,7 @@ class Template(object):
 
   def init(self, init_key, *args, name=None, **kwargs):
     """Initializes a Template into a Layer."""
-    specs = jax.tree_map(state.make_array_spec, args)
+    specs = jax.tree.map(state.make_array_spec, args)
     kwargs = dict(
         cls=self.cls,
         specs=specs,
