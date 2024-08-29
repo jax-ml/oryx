@@ -38,9 +38,10 @@ from jax import ad_checkpoint
 from jax import config
 from jax import lax
 from jax._src import pjit
+from jax.experimental import mesh_utils
+from jax.experimental import shard_map
 import jax.numpy as jnp
 import numpy as np
-
 from oryx.core import trace_util
 from oryx.core.interpreters import harvest
 from oryx.internal import test_util
@@ -1017,6 +1018,152 @@ class ControlFlowTest(test_util.TestCase):
 
     out = plant_variables(f)(dict(x=4.), 2, 1.)
     self.assertEqual(out, 8.)
+
+
+class ShardMapTest(test_util.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    self.devices = mesh_utils.create_device_mesh((1, 2))
+    self.mesh = jax.sharding.Mesh(self.devices, axis_names=('x', 'y'))
+    self.a = jnp.arange(8 * 16.0).reshape(8, 16)
+    self.b = jnp.arange(16 * 4.0).reshape(16, 4)
+
+    def _f(a, b):
+      @functools.partial(
+          shard_map.shard_map,
+          mesh=self.mesh,
+          in_specs=(
+              jax.sharding.PartitionSpec('x', 'y'),
+              jax.sharding.PartitionSpec('y', None),
+          ),
+          out_specs=jax.sharding.PartitionSpec('x', None),
+      )
+      def oryx_shmap_matmul(a_block, b_block):
+        # a_block: f32[2, 8]
+        # b_block: f32[8, 4]
+        c_partialsum = jnp.dot(a_block, b_block)
+        c_block = jax.lax.psum(c_partialsum, 'y')
+        # c_block: f32[2, 4]
+        return c_block
+
+      shmapped_val = oryx_shmap_matmul(a, b)
+      sowed_val = sow(shmapped_val, name='shmapped_val', tag='intermediate')
+      return 2.0 * sowed_val
+
+    self.f = _f
+
+    def _f_with_sow_before_shmap(a, b):
+      sowed_val = sow(a, name='a', tag='intermediate')
+
+      @functools.partial(
+          shard_map.shard_map,
+          mesh=self.mesh,
+          in_specs=(
+              jax.sharding.PartitionSpec('x', 'y'),
+              jax.sharding.PartitionSpec('y', None),
+          ),
+          out_specs=jax.sharding.PartitionSpec('x', None),
+      )
+      def oryx_shmap_matmul(a_block, b_block):
+        # a_block: f32[2, 8]
+        # b_block: f32[8, 4]
+        c_partial_sum = jnp.dot(a_block, b_block)
+        c_block = jax.lax.psum(c_partial_sum, 'y')
+        # c_block: f32[2, 4]
+        return c_block
+
+      shmapped_val = oryx_shmap_matmul(sowed_val, b)
+      return 2.0 * shmapped_val
+
+    self.f_with_sow_before_shmap = _f_with_sow_before_shmap
+
+    def _f_with_sow_inside_shmap(a, b):
+      @functools.partial(
+          shard_map.shard_map,
+          mesh=self.mesh,
+          in_specs=(
+              jax.sharding.PartitionSpec('x', 'y'),
+              jax.sharding.PartitionSpec('y', None),
+          ),
+          out_specs=jax.sharding.PartitionSpec('x', None),
+      )
+      def oryx_shmap_matmul(a_block, b_block):
+        # a_block: f32[2, 8]
+        # b_block: f32[8, 4]
+        c_partial_sum = jnp.dot(a_block, b_block)
+        c_block = sow(
+            jax.lax.psum(c_partial_sum, 'y'), name='c_block', tag='intermediate'
+        )
+        # c_block: f32[2, 4]
+        return c_block
+
+      return 2.0 * oryx_shmap_matmul(a, b)
+
+    self.f_with_sow_inside_shmap = _f_with_sow_inside_shmap
+
+  def test_reap(self):
+    reap_dict = reap(self.f, tag='intermediate')(self.a, self.b)
+    self.assertEqual(
+        list(reap_dict.keys()), ['shmapped_val'], msg='Wrong reap dict keys'
+    )
+
+    self.assertFalse(
+        np.isclose(
+            reap_dict['shmapped_val'], 2.0 * jnp.dot(self.a, self.b)
+        ).any(),
+        msg=(
+            'Reaped value is close to 2.0 * matmul but that'
+            ' should be the output of the function, not the'
+            ' intermediate reaped value.'
+        ),
+    )
+    np.testing.assert_allclose(
+        reap_dict['shmapped_val'], jnp.dot(self.a, self.b)
+    )
+
+  def test_plant(self):
+    shampped_val_for_planting = 0.5 * jnp.dot(self.a, self.b)
+    f_output_planted = plant(self.f, tag='intermediate')(
+        dict(shmapped_val=shampped_val_for_planting), self.a, self.b
+    )
+    np.testing.assert_allclose(
+        f_output_planted, 2.0 * shampped_val_for_planting
+    )
+
+  def test_reap_before_shmap(self):
+    reap_dict = reap(self.f_with_sow_before_shmap, tag='intermediate')(
+        self.a, self.b
+    )
+    self.assertEqual(list(reap_dict.keys()), ['a'], msg='Wrong reap dict keys')
+    np.testing.assert_allclose(reap_dict['a'], self.a)
+
+  def test_plant_before_shmap(self):
+    a_val_for_planting = 0.5 * self.a
+    f_output_planted = plant(self.f_with_sow_before_shmap, tag='intermediate')(
+        dict(a=a_val_for_planting), self.a, self.b
+    )
+    np.testing.assert_allclose(
+        f_output_planted, 2.0 * jnp.dot(a_val_for_planting, self.b)
+    )
+
+  def test_reap_inside_shmap_fails(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        'Detected sow calls inside a shard_map.'
+        ' This is not currently supported.',
+    ):
+      reap(self.f_with_sow_inside_shmap, tag='intermediate')(self.a, self.b)
+
+  def test_plant_inside_shmap_fails(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        'Detected sow calls inside a shard_map.'
+        ' This is not currently supported.',
+    ):
+      plant(self.f_with_sow_inside_shmap, tag='intermediate')(
+          dict(c_block=15.0 * jnp.dot(self.a, self.b)), self.a, self.b
+      )
 
 
 if __name__ == '__main__':

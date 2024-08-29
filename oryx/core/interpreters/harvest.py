@@ -156,6 +156,7 @@ from jax._src import effects
 from jax._src import pjit
 from jax._src import sharding_impls
 from jax._src.lax import control_flow as lcf
+from jax.experimental import shard_map
 import jax.extend.linear_util as lu
 from jax.interpreters import ad
 from jax.interpreters import batching
@@ -442,6 +443,11 @@ class HarvestTrace(jax_core.Trace):
     context = trace_util.get_dynamic_context(self)
     return context.process_custom_jvp_call(self, primitive, fun, jvp, tracers,
                                            symbolic_zeros=symbolic_zeros)
+
+  def process_shard_map(self, primitive, f, tracers, **params):
+    out_flat = primitive.bind(f, *[t.val for t in tracers], **params)
+    out_tracers = map(self.pure, out_flat)
+    return out_tracers
 
   def post_process_custom_jvp_call(self, out_tracers, jvp_was_run):
     context = trace_util.get_dynamic_context(self)
@@ -1704,3 +1710,17 @@ def harvest(f,
   kwargs = dict(
       tag=tag, allowlist=allowlist, blocklist=blocklist, exclusive=exclusive)
   return call_and_reap(plant(f, **kwargs), **kwargs)
+
+
+# Handle shard_map
+@shard_map.register_check(sow_p)
+def _sow_check(mesh, *in_rep, name, tag, mode, tree):
+  del mesh, name, tag, mode, tree
+  return in_rep[0]  # TODO(conmy): does this limit use to one output only?
+
+
+@shard_map.register_rewrite(sow_p)
+def _sow_rewrite(mesh, in_rep, *args, name, tag, mode, tree):
+  raise ValueError(
+      'Detected sow calls inside a shard_map. This is not currently supported.'
+  )
