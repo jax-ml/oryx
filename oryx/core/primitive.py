@@ -142,8 +142,6 @@ class FlatPrimitive(jax_core.Primitive):
       primals_out, tangents_out = ad.jvp(lu.wrap_init(self.impl,
                                                       params)).call_wrapped(
                                                           primals, tangents)
-      tangents_out = jax_util.safe_map(ad.recast_to_float0, primals_out,
-                                       tangents_out)
       return primals_out, tangents_out
 
     ad.primitive_jvps[self] = _jvp
