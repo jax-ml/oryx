@@ -403,8 +403,8 @@ class NoneProxy:
 not_mapped = NoneProxy()
 
 
-def custom_layer_cau_batch(vals, dims, *, num_consts, in_tree, out_tree, kwargs,
-                           **params):
+def custom_layer_cau_batch(axis_data, vals, dims, *, num_consts, in_tree,
+                           out_tree, kwargs, **params):
   """Batching rule for layer_cau primitive to handle custom layers."""
   if all(dim is batching.not_mapped for dim in dims):
     return layer_cau_p.bind(*vals, num_consts=num_consts, in_tree=in_tree,
@@ -453,9 +453,9 @@ def custom_layer_cau_batch(vals, dims, *, num_consts, in_tree, out_tree, kwargs,
   batched, out_dims = primitive.batch_fun(lu.wrap_init(
       layer_cau_p.impl, dict(params, num_consts=num_consts, in_tree=in_tree,
                              out_tree=out_tree,
-                             kwargs=kwargs)), orig_dims)
+                             kwargs=kwargs)), axis_data, orig_dims)
   return batched.call_wrapped(*orig_vals), out_dims()
-batching.primitive_batchers[layer_cau_p] = custom_layer_cau_batch
+batching.fancy_primitive_batchers[layer_cau_p] = custom_layer_cau_batch
 
 
 def _layer_cau_batched(layer, *args, **kwargs):
