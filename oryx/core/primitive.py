@@ -77,8 +77,8 @@ class HigherOrderPrimitive(jax_core.CallPrimitive):
 
   def impl(self, f, *args, **params):
     del params
-    with jax_core.new_sublevel():
-      return f.call_wrapped(*args)
+    # with jax_core.new_sublevel():
+    return f.call_wrapped(*args)
 
   def subcall(self, name):
     return self.__class__(f'{self.name}/{name}')
@@ -116,14 +116,29 @@ def batch_fun(fun: lu.WrappedFun, in_dims):
 
 @lu.transformation
 def _batch_fun(in_dims, *in_vals, **params):
-  with jax_core.new_main(
-      batching.BatchTrace, axis_name=jax_core.no_axis_name) as main:
-    out_vals = yield (
-        main,
-        in_dims,
-    ) + in_vals, params
-    del main
-  yield out_vals
+  assert False
+  # axis_data = batching.AxisData(axis_name, axis_size_, spmd_axis_name)
+  #     out_flat = batching.batch(
+  #         flat_fun, axis_data, in_axes_flat,
+  #         lambda: flatten_axes("vmap out_axes", out_tree(), out_axes)
+  #     ).call_wrapped(*args_flat)
+
+
+
+  # tag = jax_core.TraceTag()
+  # in_dims = in_dims() if callable(in_dims) else in_dims
+  # axis_data = jax_core.AxisData
+  # with core.take_current_trace() as parent_trace:
+  #   trace = BatchTrace(parent_trace, tag, axis_data)
+
+  # with jax_core.new_main(
+  #     batching.BatchTrace, axis_name=jax_core.no_axis_name) as main:
+  #   out_vals = yield (
+  #       main,
+  #       in_dims,
+  #   ) + in_vals, params
+  #   del main
+  # yield out_vals
 
 
 class FlatPrimitive(jax_core.Primitive):

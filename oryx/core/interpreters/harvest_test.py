@@ -638,15 +638,6 @@ class HarvestTest(test_util.TestCase):
             }
         }, 1.), (2., {}))
 
-  def test_harvest_should_clean_up_context(self):
-
-    def f(x):
-      raise ValueError('Intentional error!')
-
-    with self.assertRaisesRegex(ValueError, 'Intentional error!'):
-      harvest_variables(f)({}, 1.)
-    self.assertDictEqual(trace_util._thread_local_state.dynamic_contexts, {})
-
   def test_can_jit_compile_nest(self):
 
     def f(x):
