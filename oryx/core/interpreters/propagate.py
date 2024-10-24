@@ -38,7 +38,6 @@ from jax._src import pjit
 from jax._src import sharding_impls
 from jax.extend import linear_util as lu
 from jax.interpreters import partial_eval as pe
-from jax.interpreters import pxla
 
 from oryx.core import pytree
 from oryx.core import trace_util
@@ -367,10 +366,10 @@ def _pjit_propagate_rule(incells, outcells, **params):
   """Propagate rule for pjit primitive."""
   # TODO(https://github.com/jax-ml/oryx/issues/29): Fix this rule so that it  # pylint: disable=g-bad-todo
   # works correct for in_sharding, out_shardings and donated_invars.
-  if not any(pxla._is_unspecified(i) for i in params['in_shardings']):  # pylint: disable=protected-access
+  if not any(isinstance(i, sharding_impls.UnspecifiedValue) for i in params['in_shardings']):  # pylint: disable=protected-access
     raise ValueError('oryx only supports pjit which has no in_axis_resources '
                      'specified.')
-  if not any(pxla._is_unspecified(o) for o in params['out_shardings']):  # pylint: disable=protected-access
+  if not any(isinstance(o, sharding_impls.UnspecifiedValue) for o in params['out_shardings']):  # pylint: disable=protected-access
     raise ValueError('oryx only supports pjit which has no out_axis_resources '
                      'specified.')
 
