@@ -1211,14 +1211,14 @@ def _calc_extra_inps(num_consts, params):
 def _reap_pjit_rule(trace, *tracers, **params):
   """Reap pjit rule."""
   if params['in_shardings'] and not any(
-      sharding_impls.is_unspecified(i) for i in params['in_shardings']
+      isinstance(i, sharding_impls.UnspecifiedValue) for i in params['in_shardings']
   ):
     raise ValueError(
         'oryx only supports pjit which has no in_axis_resources '
         f'specified. Got {params["in_shardings"]}'
     )
   if params['out_shardings'] and not any(
-      sharding_impls.is_unspecified(o) for o in params['out_shardings']
+      isinstance(o, sharding_impls.UnspecifiedValue) for o in params['out_shardings']
   ):
     raise ValueError(
         'oryx only supports pjit which has no out_axis_resources '
@@ -1648,14 +1648,14 @@ plant_custom_rules[ad_checkpoint.remat_p] = _plant_checkpoint_rule
 def _plant_pjit_rule(trace, *tracers, **params):
   """Plant pjit rule."""
   if params['in_shardings'] and not any(
-      sharding_impls.is_unspecified(i) for i in params['in_shardings']
+      isinstance(i, sharding_impls.UnspecifiedValue) for i in params['in_shardings']
   ):
     raise ValueError(
         'oryx only supports pjit which has no in_axis_resources '
         f'specified. Got {params["in_shardings"]}'
     )
   if params['out_shardings'] and not any(
-      sharding_impls.is_unspecified(o) for o in params['out_shardings']
+      isinstance(o, sharding_impls.UnspecifiedValue) for o in params['out_shardings']
   ):
     raise ValueError(
         'oryx only supports pjit which has no out_axis_resources '
