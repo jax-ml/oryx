@@ -15,7 +15,7 @@
 """Module for JAX tracing utility functions."""
 import contextlib
 import threading
-from typing import Any, Dict, Generator, List
+from typing import Any, Dict, Generator, List, Hashable
 
 from jax import api_util
 from jax import tree_util
@@ -31,7 +31,7 @@ __all__ = [
     'stage',
     'trees',
     'new_dynamic_context',
-    'get_dynamic_context'
+    'get_dynamic_context',
 ]
 
 safe_map = jax_util.safe_map
@@ -67,7 +67,7 @@ def stage(f, dynamic=True):
           flat_avals)
     else:
       pvals = [pe.PartialVal.unknown(aval) for aval in flat_avals]
-      jaxpr, _, consts = pe.trace_to_jaxpr(
+      jaxpr, _, consts = pe.trace_to_jaxpr_nounits(
           flat_fun,
           pvals,
           instantiate=True)
@@ -86,19 +86,26 @@ def trees(f):
   return wrapped
 
 
+def extract_call_jaxpr(primitive, params):
+  if not (primitive.call_primitive or primitive.map_primitive):
+    return None, params
+  else:
+    params = dict(params)
+    return params.pop('call_jaxpr'), params
+
+
 class _ThreadLocalState(threading.local):
 
   def __init__(self):
     super().__init__()
-    self.dynamic_contexts: Dict[jax_core.MainTrace, List[Any]] = {}
+    self.dynamic_contexts: Dict[Hashable, List[Any]] = {}
 
 _thread_local_state = _ThreadLocalState()
 
 
 @contextlib.contextmanager
-def new_dynamic_context(master: jax_core.MainTrace,
-                        context: Any) -> Generator[None, None, None]:
-  """Creates a dynamic context for a trace."""
+def new_dynamic_context(_: Any, context: Any) -> Generator[None, None, None]:
+  master = jax_core.get_opaque_trace_state('oryx')
   if master not in _thread_local_state.dynamic_contexts:
     _thread_local_state.dynamic_contexts[master] = []
   _thread_local_state.dynamic_contexts[master].append(context)
@@ -110,16 +117,8 @@ def new_dynamic_context(master: jax_core.MainTrace,
       del _thread_local_state.dynamic_contexts[master]
 
 
-def get_dynamic_context(trace: jax_core.Trace) -> Any:
-  """Returns the current active dynamic context for a trace."""
-  if trace.main not in _thread_local_state.dynamic_contexts:
-    raise ValueError(f'No dynamic context registered for trace: {trace}')
-  return _thread_local_state.dynamic_contexts[trace.main][-1]
-
-
-def extract_call_jaxpr(primitive, params):
-  if not (primitive.call_primitive or primitive.map_primitive):
-    return None, params
-  else:
-    params = dict(params)
-    return params.pop('call_jaxpr'), params
+def get_dynamic_context(_: Any) -> Any:
+  master = jax_core.get_opaque_trace_state('oryx')
+  if master not in _thread_local_state.dynamic_contexts:
+    raise ValueError(f'No dynamic context registered for state: {master}')
+  return _thread_local_state.dynamic_contexts[master][-1]

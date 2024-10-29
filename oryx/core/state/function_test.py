@@ -65,7 +65,7 @@ class FunctionModuleTest(test_util.TestCase):
   def test_init_stateful_function(self):
 
     def f(x, init_key=None):
-      y = module.variable(np.ones(x.shape), name='y', key=init_key)
+      y = module.variable(np.ones(np.shape(x)), name='y', key=init_key)
       return x + y
 
     m = api.init(f)(random.PRNGKey(0), 1.)
@@ -77,7 +77,7 @@ class FunctionModuleTest(test_util.TestCase):
   def test_init_stateful_function_with_assign(self):
 
     def f(x, init_key=None):
-      y = module.variable(np.zeros(x.shape), name='y', key=init_key)
+      y = module.variable(np.zeros(np.shape(x)), name='y', key=init_key)
       next_y = module.assign(y + 1., name='y')
       return x + next_y
 
@@ -90,7 +90,7 @@ class FunctionModuleTest(test_util.TestCase):
   def test_assign_with_no_matching_variable_should_error(self):
 
     def f(x, init_key=None):
-      y = module.variable(np.zeros(x.shape), name='y', key=init_key)
+      y = module.variable(np.zeros(np.shape(x)), name='y', key=init_key)
       next_y = module.assign(y + 1., name='z')
       return x + next_y
 
@@ -102,7 +102,7 @@ class FunctionModuleTest(test_util.TestCase):
   def test_init_stateful_function_with_tied_in_assign(self):
 
     def f(x, init_key=None):
-      y = module.variable(np.zeros(x.shape), name='y', key=init_key)
+      y = module.variable(np.zeros(np.shape(x)), name='y', key=init_key)
       next_y = module.assign(y + 1., name='y')
       return primitive.tie_in(next_y, x) + y
 
@@ -115,7 +115,7 @@ class FunctionModuleTest(test_util.TestCase):
   def test_init_of_composed_stateful_functions_should_have_flat_params(self):
 
     def f(x, init_key=None):
-      y = module.variable(np.zeros(x.shape), name='y', key=init_key)
+      y = module.variable(np.zeros(np.shape(x)), name='y', key=init_key)
       next_y = module.assign(y + 1., name='y')
       return primitive.tie_in(next_y, x) + y
 
@@ -131,7 +131,7 @@ class FunctionModuleTest(test_util.TestCase):
   def test_init_of_nested_init_without_name_should_have_flat_params(self):
 
     def f(x, init_key=None):
-      y = module.variable(np.zeros(x.shape), name='y', key=init_key)
+      y = module.variable(np.zeros(np.shape(x)), name='y', key=init_key)
       next_y = module.assign(y + 1., name='y')
       return primitive.tie_in(next_y, x) + y
 
@@ -147,7 +147,7 @@ class FunctionModuleTest(test_util.TestCase):
   def test_init_of_nested_init_with_name_should_have_nested_params(self):
 
     def f(x, init_key=None):
-      y = module.variable(np.zeros(x.shape), name='y', key=init_key)
+      y = module.variable(np.zeros(np.shape(x)), name='y', key=init_key)
       next_y = module.assign(y + 1., name='y')
       return primitive.tie_in(next_y, x) + y
 
@@ -186,7 +186,7 @@ class VmapModuleTest(absltest.TestCase):
 
   def test_vmap_of_init_should_return_ensemble(self):
     def f(x, init_key=None):
-      w = module.variable(random.normal(init_key, x.shape), name='w')
+      w = module.variable(random.normal(init_key, np.shape(x)), name='w')
       return np.dot(w, x)
     ensemble = jax.vmap(api.init(f))(
         random.split(random.PRNGKey(0)),

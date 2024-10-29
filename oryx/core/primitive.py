@@ -77,7 +77,7 @@ class HigherOrderPrimitive(jax_core.CallPrimitive):
 
   def impl(self, f, *args, **params):
     del params
-    with jax_core.new_sublevel():
+    with jax_core.eval_context():
       return f.call_wrapped(*args)
 
   def subcall(self, name):
@@ -109,21 +109,11 @@ def hop_lowering(prim):
 register_hop_transformation_rule('mlir', hop_lowering)
 
 
-def batch_fun(fun: lu.WrappedFun, in_dims):
-  fun, out_dims = batching.batch_subtrace(fun)
-  return _batch_fun(fun, in_dims), out_dims
-
-
-@lu.transformation
-def _batch_fun(in_dims, *in_vals, **params):
-  with jax_core.new_main(
-      batching.BatchTrace, axis_name=jax_core.no_axis_name) as main:
-    out_vals = yield (
-        main,
-        in_dims,
-    ) + in_vals, params
-    del main
-  yield out_vals
+def batch_fun(fun: lu.WrappedFun, axis_data, in_dims):
+  tag = jax_core.TraceTag()
+  in_dims = in_dims() if callable(in_dims) else in_dims
+  batched, out_dims = batching.batch_subtrace(fun, tag, axis_data, in_dims)
+  return batched, out_dims
 
 
 class FlatPrimitive(jax_core.Primitive):
@@ -139,18 +129,19 @@ class FlatPrimitive(jax_core.Primitive):
     self.def_abstract_eval(_abstract)
 
     def _jvp(primals, tangents, **params):
-      primals_out, tangents_out = ad.jvp(lu.wrap_init(self.impl,
-                                                      params)).call_wrapped(
-                                                          primals, tangents)
+      primals_out, tangents_out = ad.jvp(
+          lu.wrap_init(self.impl, params)).call_wrapped(primals, tangents)
+
       return primals_out, tangents_out
 
     ad.primitive_jvps[self] = _jvp
 
-    def _batch(args, dims, **params):
-      batched, out_dims = batch_fun(lu.wrap_init(self.impl, params), dims)
+    def _batch(axis_data, args, dims, **params):
+      batched, out_dims = batch_fun(
+          lu.wrap_init(self.impl, params), axis_data, dims)
       return batched.call_wrapped(*args), out_dims()
 
-    batching.primitive_batchers[self] = _batch
+    batching.fancy_primitive_batchers[self] = _batch
 
     def _mlir(c, *mlir_args, **params):
       lowering = mlir.lower_fun(self.impl, multiple_results=True)
