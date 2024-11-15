@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "oryx"
-version = "0.2.7"
+version = "0.2.8"
 description = "Probabilistic programming and deep learning in JAX"
 authors = ["Google LLC"]
 license = "Apache 2.0"
