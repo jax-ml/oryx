@@ -15,9 +15,10 @@
 """Define Oryx version information."""
 
 # We follow Semantic Versioning (https://semver.org/)
+# Remember to also update the version in the pyproject.toml file.
 _MAJOR_VERSION = '0'
 _MINOR_VERSION = '2'
-_PATCH_VERSION = '8'
+_PATCH_VERSION = '9'
 
 # When building releases, we can update this value on the release branch to
 # reflect the current release candidate ('rc0', 'rc1') or, finally, the official
