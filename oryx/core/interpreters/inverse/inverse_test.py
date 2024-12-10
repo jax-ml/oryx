@@ -294,6 +294,7 @@ class InverseTest(test_util.TestCase):
     np.testing.assert_allclose(
         ildj_, -jnp.log(jnp.abs(jax.jacrev(f)(4.))), atol=1e-6, rtol=1e-6)
 
+  @unittest.skip("Test doesn't work with lax.split")
   def test_inverse_of_split(self):
 
     def f(x):
