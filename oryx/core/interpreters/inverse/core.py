@@ -141,7 +141,6 @@ class InverseAndILDJ(Cell):
   def new(cls, val):
     val = np.array(val)
     aval = jax_core.get_aval(val)
-    aval = jax_core.raise_to_shaped(aval)
     ndslice = NDSlice.new(val, np.zeros_like(val))
     return InverseAndILDJ(aval, frozenset([ndslice]))
 

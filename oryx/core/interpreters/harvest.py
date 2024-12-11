@@ -510,7 +510,7 @@ class ReapContext(HarvestContext):
         raise ValueError(f'Variable has already been reaped: {name}')
     avals = tree_util.tree_unflatten(
         tree,
-        [jax_core.raise_to_shaped(jax_core.get_aval(v)) for v in values])
+        [jax_core.get_aval(v) for v in values])
     vals = tree_util.tree_unflatten(tree, values)
     pred = None
     if mode == 'cond_clobber':
@@ -792,7 +792,7 @@ def _get_harvest_metadata(closed_jaxpr, settings, *args):
   flat_args, in_tree = tree_util.tree_flatten(args)
   flat_fun, out_tree = api_util.flatten_fun_nokwargs(fun, in_tree)
   in_avals = jax_util.safe_map(
-      lambda a: jax_core.raise_to_shaped(jax_core.get_aval(a)),
+      lambda a: jax_core.get_aval(a),
       flat_args)
   pe.trace_to_jaxpr_dynamic(flat_fun, in_avals)
   metadata = aux()
@@ -841,7 +841,7 @@ def _reap_scan_rule(trace: HarvestTrace, *vals, length, reverse, jaxpr,
       cond_carry_avals[name] = None
     if mode == 'cond_clobber':
       reap_carry_avals[name] = aval
-      cond_carry_avals[name] = jax_core.raise_to_shaped(jax_core.get_aval(True))
+      cond_carry_avals[name] = jax_core.get_aval(True)
 
   body_fun = jax_core.jaxpr_as_fun(jaxpr)
 
@@ -929,7 +929,7 @@ def _reap_while_rule(trace: HarvestTrace, *tracers, cond_jaxpr, body_jaxpr,
       )
     reap_avals[k] = meta['aval']
     if mode == 'cond_clobber':
-      cond_avals[k] = jax_core.raise_to_shaped(jax_core.get_aval(True))
+      cond_avals[k] = jax_core.get_aval(True)
 
   cond_fun = jax_core.jaxpr_as_fun(cond_jaxpr)
   body_fun = jax_core.jaxpr_as_fun(body_jaxpr)

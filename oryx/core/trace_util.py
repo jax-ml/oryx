@@ -42,7 +42,7 @@ def get_shaped_aval(x):
   if hasattr(x, 'dtype') and hasattr(x, 'shape'):
     return jax_core.ShapedArray(
         x.shape, dtypes.canonicalize_dtype(x.dtype, allow_extended_dtype=True))
-  return jax_core.raise_to_shaped(jax_core.get_aval(x))
+  return jax_core.get_aval(x)
 
 
 def pv_like(x, abstract=True):
