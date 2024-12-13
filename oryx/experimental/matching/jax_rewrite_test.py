@@ -15,11 +15,10 @@
 """Tests for oryx.experimental.matching.jax_rewrite."""
 
 from absl.testing import absltest
-
 import jax
 from jax import lax
+from jax.extend.core import primitives
 import jax.numpy as jnp
-
 from oryx.experimental.matching import jax_rewrite as jr
 from oryx.experimental.matching import matcher
 from oryx.experimental.matching import rules
@@ -79,22 +78,24 @@ class JaxExpressionTest(test_util.TestCase):
 
   def test_call_primitive_should_include_call_in_trace(self):
     exp_expr = Exp(jr.Literal(0.))
-    call_expr = jr.CallPrimitive(jax.core.call_p, (), (exp_expr,), jr.Params(),
-                                 [])
+    call_expr = jr.CallPrimitive(
+        primitives.call_p, (), (exp_expr,), jr.Params(), []
+    )
     jaxpr = jax.make_jaxpr(lambda: jr.evaluate(call_expr, {}))()
-    self.assertEqual(jaxpr.jaxpr.eqns[0].primitive, jax.core.call_p)
+    self.assertEqual(jaxpr.jaxpr.eqns[0].primitive, primitives.call_p)
 
   def test_call_primitive_shape_and_dtype_are_multi_part(self):
     exp_expr = Exp(jr.Literal(0.))
-    call_expr = jr.CallPrimitive(jax.core.call_p, (), (exp_expr,), jr.Params(),
-                                 [])
+    call_expr = jr.CallPrimitive(
+        primitives.call_p, (), (exp_expr,), jr.Params(), []
+    )
     self.assertTupleEqual(call_expr.shape, ((),))
     self.assertEqual(call_expr.dtype, (jnp.float32,))
 
   def test_part_infers_correct_shape_dtype(self):
-    call_expr = jr.CallPrimitive(jax.core.call_p, (),
-                                 (jr.Literal(0.), jr.Literal(1)), jr.Params(),
-                                 [])
+    call_expr = jr.CallPrimitive(
+        primitives.call_p, (), (jr.Literal(0.0), jr.Literal(1)), jr.Params(), []
+    )
     p0_expr = jr.Part(call_expr, 0)
     p1_expr = jr.Part(call_expr, 1)
     self.assertTupleEqual(p0_expr.shape, ())
@@ -151,16 +152,19 @@ class MatchingTest(test_util.TestCase):
     pattern = jr.CallPrimitive(
         matcher.Var('prim'), matcher.Var('args'), matcher.Var('expression'),
         matcher.Var('params'), matcher.Var('names'))
-    expr = jr.CallPrimitive(jax.core.call_p, (),
-                            (jr.Literal(0.), jr.Literal(1)), jr.Params(), [])
+    expr = jr.CallPrimitive(
+        primitives.call_p, (), (jr.Literal(0.0), jr.Literal(1)), jr.Params(), []
+    )
     self.assertDictEqual(
         matcher.match(pattern, expr),
         dict(
-            prim=jax.core.call_p,
+            prim=primitives.call_p,
             args=(),
-            expression=(jr.Literal(0.), jr.Literal(1.)),
+            expression=(jr.Literal(0.0), jr.Literal(1.0)),
             params=jr.Params(),
-            names=[]))
+            names=[],
+        ),
+    )
 
 
 class RewriteTest(test_util.TestCase):

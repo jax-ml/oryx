@@ -18,6 +18,7 @@ import jax
 from jax import random
 from jax._src import api_util
 from jax._src import core as jax_core
+from jax.extend.core import primitives
 from jax.extend import linear_util as lu
 import jax.numpy as jnp
 
@@ -72,13 +73,13 @@ def call(f):
     fun = lu.wrap_init(f, kwargs)
     flat_args, in_tree = jax.tree_util.tree_flatten(args)
     flat_fun, out_tree = api_util.flatten_fun_nokwargs(fun, in_tree)
-    ans = jax_core.call_p.bind(flat_fun, *flat_args)
+    ans = primitives.call_p.bind(flat_fun, *flat_args)
     return jax.tree_util.tree_unflatten(out_tree(), ans)
 
   return wrapped
 
 
-jax_core.call_p.call_primitive = True
+primitives.call_p.call_primitive = True
 
 
 class LogProbTest(test_util.TestCase):

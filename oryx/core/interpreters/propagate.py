@@ -36,6 +36,7 @@ from jax import tree_util
 from jax._src import core as jax_core
 from jax._src import pjit
 from jax._src import sharding_impls
+from jax.extend.core import primitives
 from jax.extend import linear_util as lu
 from jax.interpreters import partial_eval as pe
 
@@ -356,8 +357,8 @@ def call_rule(prim, incells, outcells, **params):
 
 
 default_call_rules = {}
-default_call_rules[jax_core.call_p] = functools.partial(call_rule,
-                                                        jax_core.call_p)
+default_call_rules[primitives.call_p] = functools.partial(call_rule,
+                                                          primitives.call_p)
 default_call_rules[harvest.nest_p] = functools.partial(call_rule,
                                                        harvest.nest_p)
 
