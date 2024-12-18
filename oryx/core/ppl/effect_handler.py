@@ -107,6 +107,7 @@ from jax import util as jax_util
 from jax._src import core as jax_core
 from jax._src import pjit
 from jax._src import sharding_impls
+import jax.extend as jex
 from jax.extend import linear_util as lu
 from jax.interpreters import partial_eval as pe
 
@@ -118,14 +119,14 @@ __all__ = [
 
 Value = Any
 EffectHandler = Callable[..., Any]
-VarOrLiteral = Union[jax_core.Var, jax_core.Literal]
-Rules = Dict[jax_core.Primitive, EffectHandler]
+VarOrLiteral = Union[jex.core.Var, jex.core.Literal]
+Rules = Dict[jex.core.Primitive, EffectHandler]
 
 _effect_handler_call_rules: Rules = {}
 custom_effect_handler_rules: Rules = {}
 
 
-def register_call_rule(primitive: jax_core.Primitive,
+def register_call_rule(primitive: jex.core.Primitive,
                        rule: EffectHandler) -> None:
   _effect_handler_call_rules[primitive] = rule
 
@@ -147,7 +148,7 @@ class Environment:
 
   def read(self, var: VarOrLiteral) -> Value:
     """Reads a value from an environment."""
-    if isinstance(var, jax_core.Literal):
+    if isinstance(var, jex.core.Literal):
       return var.val
     if var not in self.env:
       raise ValueError(f'Couldn\'t find {var} in environment: {self.env}')
@@ -155,12 +156,12 @@ class Environment:
 
   def write(self, var: VarOrLiteral, val: Value) -> None:
     """Writes a value to an environment."""
-    if isinstance(var, jax_core.Literal):
+    if isinstance(var, jex.core.Literal):
       return
     self.env[var] = val
 
 
-def eval_jaxpr_with_state(jaxpr: jax_core.Jaxpr, rules: Rules,
+def eval_jaxpr_with_state(jaxpr: jex.core.Jaxpr, rules: Rules,
                           consts: Sequence[Value], state: Value,
                           *args: Value) -> Tuple[List[Value], Value]:
   """Interprets a JAXpr and manages an input state with primitive rules.
@@ -214,7 +215,7 @@ def eval_jaxpr_with_state(jaxpr: jax_core.Jaxpr, rules: Rules,
 def default_call_interpreter_rule(primitive: jax_core.CallPrimitive,
                                   rules: Rules, state: Value,
                                   invals: Sequence[Value],
-                                  call_jaxpr: jax_core.Jaxpr,
+                                  call_jaxpr: jex.core.Jaxpr,
                                   **params: Any) -> Tuple[Value, Value]:
   """Handles simple call primitives like `jax_core.call_p`.
 
@@ -232,7 +233,7 @@ def default_call_interpreter_rule(primitive: jax_core.CallPrimitive,
     state: The interpreter `state` value at the time of calling evaluating the
       call primitive.
     invals: The input values to the call primitive.
-    call_jaxpr: The `jax_core.Jaxpr` that corresponds to the body of the call
+    call_jaxpr: The `jex.core.Jaxpr` that corresponds to the body of the call
       primitive.
     **params: The parameters of the call primitive.
 
@@ -252,7 +253,7 @@ def default_call_interpreter_rule(primitive: jax_core.CallPrimitive,
 @lu.cache
 def _to_jaxpr(flat_fun, in_avals):
   new_jaxpr, _, consts = pe.trace_to_jaxpr_dynamic(flat_fun, in_avals)
-  new_jaxpr = jax_core.ClosedJaxpr(new_jaxpr, consts)
+  new_jaxpr = jex.core.ClosedJaxpr(new_jaxpr, consts)
   return new_jaxpr
 
 
@@ -297,7 +298,7 @@ custom_effect_handler_rules[pjit.pjit_p] = _pjit_effect_handler_rule
 
 
 def make_effect_handler(
-    handlers: Dict[jax_core.Primitive, EffectHandler]
+    handlers: Dict[jex.core.Primitive, EffectHandler]
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
   """Returns a function transformation that applies a provided set of handlers.
 

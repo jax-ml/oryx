@@ -20,6 +20,7 @@ from jax import api_util
 from jax import tree_util
 from jax import util as jax_util
 from jax._src import core as jax_core
+import jax.extend as jex
 from jax.extend import linear_util as lu
 from jax.interpreters import ad
 from jax.interpreters import batching
@@ -116,7 +117,7 @@ def batch_fun(fun: lu.WrappedFun, axis_data, in_dims):
   return batched, out_dims
 
 
-class FlatPrimitive(jax_core.Primitive):
+class FlatPrimitive(jex.core.Primitive):
   """Contains default implementations of transformations."""
 
   def __init__(self, name):
@@ -221,7 +222,7 @@ class InitialStylePrimitive(FlatPrimitive):
     return InitialStylePrimitive(f'{self.name}/{name}')
 
 
-tie_all_p = jax_core.Primitive('tie_all')
+tie_all_p = jex.core.Primitive('tie_all')
 tie_all_p.multiple_results = True
 tie_all_p.def_impl(lambda *args: args)
 tie_all_p.def_abstract_eval(lambda *args: args)

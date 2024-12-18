@@ -18,6 +18,7 @@ from absl.testing import absltest
 import jax
 from jax import random
 from jax._src import core as jax_core
+import jax.extend as jex
 from jax.interpreters import batching
 import jax.numpy as jnp
 import numpy as np
@@ -44,7 +45,7 @@ trace_log_prob = transformations.trace_log_prob
 
 # Define a random normal primitive so we can register it with the `log_prob`
 # transformation.
-random_normal_p = jax_core.Primitive('random_normal')
+random_normal_p = jex.core.Primitive('random_normal')
 
 
 def random_normal(key, batch_ndims=0):

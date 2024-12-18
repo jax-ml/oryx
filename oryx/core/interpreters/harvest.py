@@ -158,6 +158,7 @@ from jax._src import pjit
 from jax._src import sharding_impls
 from jax._src.lax import control_flow as lcf
 from jax.experimental import shard_map
+import jax.extend as jex
 import jax.extend.linear_util as lu
 from jax.interpreters import ad
 from jax.interpreters import batching
@@ -178,7 +179,7 @@ __all__ = [
 
 Value = Any
 
-sow_p = jax_core.Primitive('sow')
+sow_p = jex.core.Primitive('sow')
 sow_p.multiple_results = True
 
 
@@ -383,7 +384,7 @@ class HarvestTrace(jax_core.Trace):
     self.context = context
 
   def process_primitive(
-      self, primitive: jax_core.Primitive, vals: List[Any],
+      self, primitive: jex.core.Primitive, vals: List[Any],
       params: Dict[str, Any]) -> Union[Any, List[Any]]:
     custom_rule = self.context.get_custom_rule(primitive)
     if custom_rule:
@@ -391,7 +392,7 @@ class HarvestTrace(jax_core.Trace):
     return self.default_process_primitive(primitive, vals, params)
 
   def default_process_primitive(
-      self, primitive: jax_core.Primitive, vals: List[Any],
+      self, primitive: jex.core.Primitive, vals: List[Any],
       params: Dict[str, Any]) -> Union[Any, List[Any]]:
     if primitive is sow_p:
       with jax_core.set_current_trace(self.parent_trace):
@@ -403,7 +404,7 @@ class HarvestTrace(jax_core.Trace):
       return outvals
     return outvals[0]
 
-  def process_call(self, call_primitive: jax_core.Primitive, f: Any,
+  def process_call(self, call_primitive: jex.core.Primitive, f: Any,
                    vals: List[Any], params: Dict[str, Any]):
     context = self.context
     if call_primitive is nest_p:
@@ -411,7 +412,7 @@ class HarvestTrace(jax_core.Trace):
     return context.process_higher_order_primitive(self, call_primitive, f,
                                                   vals, params, False)
 
-  def process_map(self, call_primitive: jax_core.Primitive, f: Any,
+  def process_map(self, call_primitive: jex.core.Primitive, f: Any,
                   vals: List[Any], params: Dict[str, Any]):
     return self.context.process_higher_order_primitive(
         self, call_primitive, f, vals, params, True)
@@ -469,7 +470,7 @@ class HarvestContext:
     raise NotImplementedError
 
   def process_higher_order_primitive(self, trace: HarvestTrace,
-                                     call_primitive: jax_core.Primitive, f: Any,
+                                     call_primitive: jex.core.Primitive, f: Any,
                                      vals: List[Any],
                                      params: Dict[str, Any], is_map: bool):
     raise NotImplementedError
@@ -783,7 +784,7 @@ def _reap_metadata_wrapper(*args):
 
 def _get_harvest_metadata(closed_jaxpr, settings, *args):
   """Probes a jaxpr for metadata like its sown values."""
-  fun = lu.wrap_init(jax_core.jaxpr_as_fun(closed_jaxpr))
+  fun = lu.wrap_init(jex.core.jaxpr_as_fun(closed_jaxpr))
 
   settings = HarvestSettings(settings.tag, settings.blocklist,
                              settings.allowlist, True)
@@ -843,7 +844,7 @@ def _reap_scan_rule(trace: HarvestTrace, *vals, length, reverse, jaxpr,
       reap_carry_avals[name] = aval
       cond_carry_avals[name] = jax_core.get_aval(True)
 
-  body_fun = jax_core.jaxpr_as_fun(jaxpr)
+  body_fun = jex.core.jaxpr_as_fun(jaxpr)
 
   reap_carry_flat_avals = tree_util.tree_leaves(
       (reap_carry_avals, cond_carry_avals)
@@ -931,8 +932,8 @@ def _reap_while_rule(trace: HarvestTrace, *tracers, cond_jaxpr, body_jaxpr,
     if mode == 'cond_clobber':
       cond_avals[k] = jax_core.get_aval(True)
 
-  cond_fun = jax_core.jaxpr_as_fun(cond_jaxpr)
-  body_fun = jax_core.jaxpr_as_fun(body_jaxpr)
+  cond_fun = jex.core.jaxpr_as_fun(cond_jaxpr)
+  body_fun = jex.core.jaxpr_as_fun(body_jaxpr)
   reap_settings = dict(
       tag=settings.tag,
       allowlist=settings.allowlist,
@@ -1009,7 +1010,7 @@ def _reap_cond_rule(trace, *tracers, branches, linear=None):
       _get_harvest_metadata(branch, settings, *ops_vals)
       for branch in branches)
   _check_branch_metadata(branch_metadatas)
-  branch_funs = tuple(map(jax_core.jaxpr_as_fun, branches))
+  branch_funs = tuple(map(jex.core.jaxpr_as_fun, branches))
   reaped_branches = tuple(
       _call_and_reap(f, **reap_settings) for f in branch_funs)
   in_tree = tree_util.tree_structure(ops_avals)
@@ -1046,9 +1047,9 @@ def _reap_checkpoint_rule(trace, *invals, jaxpr, policy, prevent_cse,
       allowlist=settings.allowlist,
       blocklist=settings.blocklist,
       exclusive=settings.exclusive)
-  closed_jaxpr = jax_core.ClosedJaxpr(jaxpr, ())
+  closed_jaxpr = jex.core.ClosedJaxpr(jaxpr, ())
   reap_metadata = _get_harvest_metadata(closed_jaxpr, settings, *invals)
-  remat_fun = jax_core.jaxpr_as_fun(closed_jaxpr)
+  remat_fun = jex.core.jaxpr_as_fun(closed_jaxpr)
   reaped_remat_fun = _call_and_reap(remat_fun, **reap_settings)
   reap_jaxpr, consts, out_tree = lcf._initial_style_jaxpr(  # pylint: disable=protected-access
       reaped_remat_fun, tree_util.tree_structure(invals),
@@ -1078,7 +1079,7 @@ def _oryx_pjit_jaxpr(flat_fun, in_avals):
     jaxpr = pe.close_jaxpr(jaxpr)
     final_consts = consts
   else:
-    jaxpr = jax_core.ClosedJaxpr(jaxpr, consts)
+    jaxpr = jex.core.ClosedJaxpr(jaxpr, consts)
     final_consts = []
 
   return jaxpr, final_consts, out_avals
@@ -1117,7 +1118,7 @@ def _reap_pjit_rule(trace, *invals, **params):
       exclusive=settings.exclusive)
   closed_jaxpr = params['jaxpr']
   reap_metadata = _get_harvest_metadata(closed_jaxpr, settings, *invals)
-  pjit_fun = jax_core.jaxpr_as_fun(closed_jaxpr)
+  pjit_fun = jex.core.jaxpr_as_fun(closed_jaxpr)
   reaped_pjit_fun = lu.wrap_init(_call_and_reap(pjit_fun, **reap_settings))
   in_tree = tree_util.tree_structure(invals)
   flat_fun, out_tree = api_util.flatten_fun_nokwargs(reaped_pjit_fun, in_tree)
@@ -1332,7 +1333,7 @@ def _plant_scan_rule(trace: HarvestTrace, *tracers, length, reverse, jaxpr,
     plant_modes[mode].add(name)
     if mode == 'append' and name in plants:
       plant_xs_avals[name] = aval
-  body_fun = jax_core.jaxpr_as_fun(jaxpr)
+  body_fun = jex.core.jaxpr_as_fun(jaxpr)
   all_clobber_plants = {
       name: value
       for name, value in plants.items()
@@ -1400,7 +1401,7 @@ def _plant_while_rule(trace: HarvestTrace, *tracers, cond_jaxpr, body_jaxpr,
           ' `while_loop`.'
       )
 
-  body_fun = jax_core.jaxpr_as_fun(body_jaxpr)
+  body_fun = jex.core.jaxpr_as_fun(body_jaxpr)
   plant_settings = dict(
       tag=settings.tag,
       allowlist=settings.allowlist,
@@ -1444,7 +1445,7 @@ def _plant_cond_rule(trace, *tracers, branches, linear=None):
       for branch in branches)
   _check_branch_metadata(branch_metadatas)
   plants = trace.context.plants
-  branch_funs = tuple(map(jax_core.jaxpr_as_fun, branches))
+  branch_funs = tuple(map(jex.core.jaxpr_as_fun, branches))
   planted_branches = tuple(
       functools.partial(plant(f, **plant_settings), plants)
       for f in branch_funs)
@@ -1478,9 +1479,9 @@ def _plant_checkpoint_rule(trace, *invals, jaxpr, policy, prevent_cse,
       allowlist=settings.allowlist,
       blocklist=settings.blocklist,
       exclusive=settings.exclusive)
-  closed_jaxpr = jax_core.ClosedJaxpr(jaxpr, ())
+  closed_jaxpr = jex.core.ClosedJaxpr(jaxpr, ())
   plants = trace.context.plants
-  remat_fun = jax_core.jaxpr_as_fun(closed_jaxpr)
+  remat_fun = jex.core.jaxpr_as_fun(closed_jaxpr)
   planted_remat_fun = functools.partial(
       plant(remat_fun, **plant_settings), plants)
   plant_jaxpr, consts, _ = lcf._initial_style_jaxpr(  # pylint: disable=protected-access
@@ -1524,7 +1525,7 @@ def _plant_pjit_rule(trace, *invals, **params):
   closed_jaxpr = params['jaxpr']
   plants = trace.context.plants
 
-  pjit_fun = jax_core.jaxpr_as_fun(closed_jaxpr)
+  pjit_fun = jex.core.jaxpr_as_fun(closed_jaxpr)
   planted_pjit_fun = lu.wrap_init(functools.partial(
       plant(pjit_fun, **plant_settings), plants))
   in_tree = tree_util.tree_structure(invals)

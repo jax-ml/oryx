@@ -22,6 +22,7 @@ from jax import tree_util
 from jax import util as jax_util
 from jax._src import core as jax_core
 from jax._src import dtypes
+import jax.extend as jex
 from jax.extend import linear_util as lu
 from jax.interpreters import partial_eval as pe
 
@@ -71,7 +72,7 @@ def stage(f, dynamic=True):
           flat_fun,
           pvals,
           instantiate=True)
-    typed_jaxpr = jax_core.ClosedJaxpr(jaxpr, consts)
+    typed_jaxpr = jex.core.ClosedJaxpr(jaxpr, consts)
     return typed_jaxpr, (in_tree, out_tree())
 
   return wrapped

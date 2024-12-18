@@ -42,7 +42,7 @@ import jax
 from jax import random
 from jax import tree_util
 from jax import util as jax_util
-from jax._src import core as jax_core
+import jax.extend as jex
 from jax.extend import linear_util as lu
 
 from oryx.core import kwargs_util
@@ -95,12 +95,12 @@ def lift_from_kwargs(func, key, *args, **kwargs):
   return wrapped, elem, args, kwargs
 
 
-def eval_jaxpr_with_kwargs(jaxpr: jax_core.Jaxpr, consts: Iterable[Any], *args,
+def eval_jaxpr_with_kwargs(jaxpr: jex.core.Jaxpr, consts: Iterable[Any], *args,
                            **kwargs):
   """Evals a jaxpr while passing kwargs into registered primitives."""
 
   def read(v):
-    if isinstance(v, jax_core.Literal):
+    if isinstance(v, jex.core.Literal):
       return v.val
     else:
       return env[v]
@@ -157,7 +157,7 @@ class FunctionModule(module.Module):
 
   def __init__(self,
                variables: Dict[str, Any],
-               jaxpr: jax_core.ClosedJaxpr,
+               jaxpr: jex.core.ClosedJaxpr,
                in_tree: Any,
                out_tree: Any,
                *,

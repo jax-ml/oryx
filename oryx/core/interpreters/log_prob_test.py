@@ -18,6 +18,7 @@ import jax
 from jax import random
 from jax._src import api_util
 from jax._src import core as jax_core
+import jax.extend as jex
 from jax.extend.core import primitives
 from jax.extend import linear_util as lu
 import jax.numpy as jnp
@@ -32,7 +33,7 @@ import tensorflow_probability.substrates.jax as tfp
 
 tfd = tfp.distributions
 
-random_normal_p = jax_core.Primitive('random_normal')
+random_normal_p = jex.core.Primitive('random_normal')
 
 
 def random_normal(rng, name=None):

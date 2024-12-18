@@ -17,7 +17,7 @@
 from absl.testing import absltest
 import jax
 from jax import random
-from jax._src import core as jax_core
+import jax.extend as jex
 import jax.numpy as np
 import numpy as onp
 
@@ -27,7 +27,7 @@ from oryx.core.state import function
 from oryx.core.state import module
 from oryx.internal import test_util
 
-training_add_p = jax_core.Primitive('training_add')
+training_add_p = jex.core.Primitive('training_add')
 
 
 def _training_add_impl(a, **_):

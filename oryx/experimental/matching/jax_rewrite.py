@@ -200,8 +200,8 @@ import jax
 from jax import api_util
 from jax import tree_util
 from jax import util as jax_util
-from jax._src import core as jax_core
 from jax._src import pjit
+import jax.extend as jex
 from jax.extend import linear_util as lu
 from jax.interpreters import partial_eval as pe
 import jax.numpy as jnp
@@ -248,7 +248,7 @@ def evaluate_value(value, env: Env) -> Any:
 
 
 @evaluate.register(tuple)
-def evaluate_tuple(expr: Tuple[Any], env: Env) -> Tuple[Any]:
+def evaluate_tuple(expr: Tuple[Any, ...], env: Env) -> Tuple[Any, ...]:
   return tuple(map(lambda e: evaluate(e, env), expr))
 
 
@@ -335,7 +335,7 @@ class JaxVar(JaxExpression):
       in an environment.
   """
 
-  def __init__(self, name: str, shape: Tuple[Any], dtype: jnp.dtype):
+  def __init__(self, name: str, shape: Tuple[Any, ...], dtype: jnp.dtype):
     """Constructor for `JaxVar`.
 
     Args:
@@ -443,9 +443,9 @@ class Params(matcher.Pattern):
 
 @dataclasses.dataclass
 class Primitive(JaxExpression):
-  """A `JAXExpression` corresponding to a `jax.core.Primitive`.
+  """A `JAXExpression` corresponding to a `jex.core.Primitive`.
 
-  A `Primitive` encapsulates a `jax.core.Primitive`, its arguments and its
+  A `Primitive` encapsulates a `jex.core.Primitive`, its arguments and its
   parameters.
 
   Attributes:
@@ -455,7 +455,7 @@ class Primitive(JaxExpression):
     params: A `Params` object that holds the parameters passed into the JAX
       primitive when a `Primitive` is evaluated.
   """
-  primitive: Union[matcher.Pattern, jax_core.Primitive]
+  primitive: Union[matcher.Pattern, jex.core.Primitive]
   operands: Tuple[Any, ...]
   params: Union[matcher.Pattern, Params]
 
@@ -472,7 +472,7 @@ class Primitive(JaxExpression):
 
   @property
   def shape(self):
-    if not isinstance(self.primitive, jax_core.Primitive):
+    if not isinstance(self.primitive, jex.core.Primitive):
       raise ValueError('Cannot compute shape of pattern.')
     if self.primitive.multiple_results:
       return tuple(a.shape for a in self.shape_dtype)
@@ -480,7 +480,7 @@ class Primitive(JaxExpression):
 
   @property
   def dtype(self):
-    if not isinstance(self.primitive, jax_core.Primitive):
+    if not isinstance(self.primitive, jex.core.Primitive):
       raise ValueError('Cannot compute dtype of pattern.')
     if self.primitive.multiple_results:
       return tuple(a.dtype for a in self.shape_dtype)
@@ -501,7 +501,7 @@ class Primitive(JaxExpression):
 
   def evaluate(self, env: Env) -> Any:
     operands = evaluate(self.operands, env)
-    if not isinstance(self.primitive, jax_core.Primitive):
+    if not isinstance(self.primitive, jex.core.Primitive):
       raise ValueError('Cannot evaluate expression with patterns.')
     return self.primitive.bind(*operands, **self.params)  # pylint: disable=not-an-iterable
 
@@ -575,7 +575,7 @@ class BoundExpression(JaxExpression):
 
   A `BoundExpression` enables pinning `JaxVar`s in an expression to fixed
   values, removing the need to bind them to values when the `BoundExpression` is
-  evaluated. Conceptually this is equivalent to a `jax.core.ClosedJaxpr`.
+  evaluated. Conceptually this is equivalent to a `jex.core.ClosedJaxpr`.
 
   Attributes:
     expressions: A sequence of expressions that are evaluated to produce the
@@ -636,7 +636,7 @@ class CallPrimitive(JaxExpression):
     variable_names: A sequence of string names that are used as keys for the
       operands in the environment `expression` is evaluated in.
   """
-  primitive: jax_core.Primitive
+  primitive: jex.core.Primitive
   operands: Sequence[Any]
   expression: Any
   params: Params
@@ -692,7 +692,7 @@ class CallPrimitive(JaxExpression):
 @lu.cache
 def _to_jaxpr(flat_fun, in_avals):
   new_jaxpr, _, consts = pe.trace_to_jaxpr_dynamic(flat_fun, in_avals)
-  new_jaxpr = jax_core.ClosedJaxpr(new_jaxpr, consts)
+  new_jaxpr = jex.core.ClosedJaxpr(new_jaxpr, consts)
   return new_jaxpr
 
 
@@ -731,11 +731,11 @@ custom_expressions = {}
 
 
 def primitive_to_expression(
-    prim: jax_core.Primitive) -> Callable[[Tuple[Any], Params], Primitive]:
+    prim: jex.core.Primitive) -> Callable[[Tuple[Any, ...], Params], Primitive]:
   """Converts a JAX primitive into a `Primitive` expression.
 
   Args:
-    prim: A `jax.core.Primitive` to be converted into an expression.
+    prim: A `jex.core.Primitive` to be converted into an expression.
   Returns:
     A function that returns an expression when provided operands and parameters.
   """
@@ -746,23 +746,23 @@ def primitive_to_expression(
   return custom_expressions.get(prim, default_expression)
 
 
-def jaxpr_to_expressions(jaxpr: jax_core.Jaxpr) -> Tuple[Expr]:
+def jaxpr_to_expressions(jaxpr: jex.core.Jaxpr) -> Tuple[Expr, ...]:
   """Converts a JAXpr into a tuple of output `JaxExpression`s.
 
   Args:
-    jaxpr: a `jax.core.Jaxpr` to be converted into a tuple of `JaxExpression`s.
+    jaxpr: a `jex.core.Jaxpr` to be converted into a tuple of `JaxExpression`s.
   Returns:
     A tuple of `JaxExpression`s.
   """
   env = {}
 
-  def read_env(var: jax_core.Var) -> Any:
-    if isinstance(var, jax_core.Literal):
+  def read_env(var: jex.core.Var) -> Any:
+    if isinstance(var, jex.core.Literal):
       return Literal(var.val)
     return env[str(var)]
 
-  def write_env(var: jax_core.Var, val: Any) -> None:
-    if isinstance(var, jax_core.Literal):
+  def write_env(var: jex.core.Var, val: Any) -> None:
+    if isinstance(var, jex.core.Literal):
       return
     env[str(var)] = val
 

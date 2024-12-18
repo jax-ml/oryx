@@ -25,6 +25,7 @@ in the graph. Propagation continues until there are Cells for every node, or
 when no further progress can be made. Finally, Cell values for all nodes in the
 graph are returned.
 """
+
 import collections
 import dataclasses
 import functools
@@ -36,8 +37,9 @@ from jax import tree_util
 from jax._src import core as jax_core
 from jax._src import pjit
 from jax._src import sharding_impls
-from jax.extend.core import primitives
+import jax.extend as jex
 from jax.extend import linear_util as lu
+from jax.extend.core import primitives
 from jax.interpreters import partial_eval as pe
 
 from oryx.core import pytree
@@ -52,7 +54,7 @@ __all__ = [
 ]
 
 State = Any
-VarOrLiteral = Union[jax_core.Var, jax_core.Literal]
+VarOrLiteral = Union[jex.core.Var, jex.core.Literal]
 safe_map = jax_core.safe_map
 
 
@@ -89,7 +91,7 @@ class Cell(pytree.Pytree):
     raise NotImplementedError
 
   @property
-  def shape(self) -> Tuple[int]:
+  def shape(self) -> Tuple[int, ...]:
     return self.aval.shape
 
   @property
@@ -113,11 +115,11 @@ class Cell(pytree.Pytree):
 
 @dataclasses.dataclass(frozen=True)
 class Equation:
-  """Hashable wrapper for jax_core.Jaxprs."""
-  invars: Tuple[jax_core.Var]
-  outvars: Tuple[jax_core.Var]
-  primitive: jax_core.Primitive
-  params_flat: Tuple[Any]
+  """Hashable wrapper for jex.core.Jaxprs."""
+  invars: Tuple[jex.core.Var, ...]
+  outvars: Tuple[jex.core.Var, ...]
+  primitive: jex.core.Primitive
+  params_flat: Tuple[Any, ...]
   params_tree: Any
 
   @classmethod
@@ -135,7 +137,7 @@ class Equation:
     # Override __hash__ to use Literal object IDs because Literals are not
     # natively hashable
     hashable_invars = tuple(
-        id(invar) if isinstance(invar, jax_core.Literal) else invar
+        id(invar) if isinstance(invar, jex.core.Literal) else invar
         for invar in self.invars)
     return hash(
         (hashable_invars, self.outvars, self.primitive, self.params_tree))
@@ -153,18 +155,18 @@ class Environment:
 
   def __init__(self, cell_type, jaxpr):
     self.cell_type = cell_type
-    self.env: Dict[jax_core.Var, Cell] = {}
+    self.env: Dict[jex.core.Var, Cell] = {}
     self.states: Dict[Equation, Cell] = {}
-    self.jaxpr: jax_core.Jaxpr = jaxpr
+    self.jaxpr: jex.core.Jaxpr = jaxpr
 
   def read(self, var: VarOrLiteral) -> Cell:
-    if isinstance(var, jax_core.Literal):
+    if isinstance(var, jex.core.Literal):
       return self.cell_type.new(var.val)
     else:
       return self.env.get(var, self.cell_type.unknown(var.aval))
 
   def write(self, var: VarOrLiteral, cell: Cell) -> Cell:
-    if isinstance(var, jax_core.Literal):
+    if isinstance(var, jex.core.Literal):
       return cell
     cur_cell = self.read(var)
     if isinstance(var, jax_core.DropVar):
@@ -180,7 +182,7 @@ class Environment:
                      '`write` method instead.')
 
   def __contains__(self, var: VarOrLiteral):
-    if isinstance(var, jax_core.Literal):
+    if isinstance(var, jex.core.Literal):
       return True
     return var in self.env
 
@@ -196,12 +198,12 @@ def construct_graph_representation(eqns):
   neighbors = collections.defaultdict(set)
   for eqn in eqns:
     for var in it.chain(eqn.invars, eqn.outvars):
-      if isinstance(var, jax_core.Literal):
+      if isinstance(var, jex.core.Literal):
         continue
       neighbors[var].add(eqn)
 
   def get_neighbors(var):
-    if isinstance(var, jax_core.Literal):
+    if isinstance(var, jex.core.Literal):
       return set()
     return neighbors[var]
 
@@ -238,12 +240,12 @@ def identity_reducer(env, eqn, state, new_state):
 @lu.cache
 def _to_jaxpr(flat_fun, in_avals):
   new_jaxpr, _, consts = pe.trace_to_jaxpr_dynamic(flat_fun, in_avals)
-  new_jaxpr = jax_core.ClosedJaxpr(new_jaxpr, consts)
+  new_jaxpr = jex.core.ClosedJaxpr(new_jaxpr, consts)
   return new_jaxpr
 
 
 def propagate(cell_type: Type[Cell],
-              rules: Dict[jax_core.Primitive, PropagationRule],
+              rules: Dict[jex.core.Primitive, PropagationRule],
               jaxpr: pe.Jaxpr,
               constcells: List[Cell],
               incells: List[Cell],
