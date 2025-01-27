@@ -874,7 +874,8 @@ def _reap_scan_rule(trace: HarvestTrace, *vals, length, reverse, jaxpr,
 
   new_body_jaxpr, consts, out_tree = lcf._initial_style_jaxpr(  # pylint: disable=protected-access
       new_body, reap_carry_in_tree,
-      tuple(carry_avals + reap_carry_flat_avals + x_avals))
+      tuple(carry_avals + reap_carry_flat_avals + x_avals),
+      jaxpr.jaxpr.debug_info)
 
   with jax_core.set_current_trace(trace.parent_trace):
     dummy_reap_carry_vals = tree_util.tree_map(
@@ -956,9 +957,11 @@ def _reap_while_rule(trace: HarvestTrace, *tracers, cond_jaxpr, body_jaxpr,
       (init_avals, reap_avals, cond_avals)
   )
   new_cond_jaxpr, cond_consts, _ = lcf._initial_style_jaxpr(  # pylint: disable=protected-access
-      new_cond, new_in_tree, tuple(new_in_avals))
+      new_cond, new_in_tree, tuple(new_in_avals),
+      cond_jaxpr.jaxpr.debug_info)
   new_body_jaxpr, body_consts, out_tree = lcf._initial_style_jaxpr(  # pylint: disable=protected-access
-      new_body, new_in_tree, tuple(new_in_avals))
+      new_body, new_in_tree, tuple(new_in_avals),
+      body_jaxpr.jaxpr.debug_info)
   dummy_reap_vals = tree_util.tree_map(lambda x: jnp.zeros(x.shape, x.dtype),
                                        (reap_avals, cond_avals))
   new_in_vals = tree_util.tree_leaves((init_vals, dummy_reap_vals))
@@ -1010,13 +1013,14 @@ def _reap_cond_rule(trace, *tracers, branches, linear=None):
       _get_harvest_metadata(branch, settings, *ops_vals)
       for branch in branches)
   _check_branch_metadata(branch_metadatas)
+  dbgs = [branch.jaxpr.debug_info for branch in branches]
   branch_funs = tuple(map(jex.core.jaxpr_as_fun, branches))
   reaped_branches = tuple(
       _call_and_reap(f, **reap_settings) for f in branch_funs)
   in_tree = tree_util.tree_structure(ops_avals)
   new_branch_jaxprs, consts, out_trees = (
       lcf._initial_style_jaxprs_with_common_consts(  # pylint: disable=protected-access
-          reaped_branches, in_tree, ops_avals, lax.cond_p.name))
+          reaped_branches, in_tree, ops_avals, dbgs))
   if linear is None:
     out = lax.cond_p.bind_with_trace(
         trace.parent_trace,
@@ -1053,7 +1057,8 @@ def _reap_checkpoint_rule(trace, *invals, jaxpr, policy, prevent_cse,
   reaped_remat_fun = _call_and_reap(remat_fun, **reap_settings)
   reap_jaxpr, consts, out_tree = lcf._initial_style_jaxpr(  # pylint: disable=protected-access
       reaped_remat_fun, tree_util.tree_structure(invals),
-      tuple(jax_core.get_aval(t) for t in invals))
+      tuple(jax_core.get_aval(t) for t in invals),
+      jaxpr.debug_info)
   outvals = ad_checkpoint.remat_p.bind_with_trace(
       trace.parent_trace,
       (*consts, *invals),
@@ -1365,7 +1370,8 @@ def _plant_scan_rule(trace: HarvestTrace, *tracers, length, reverse, jaxpr,
 
   new_body_jaxpr, consts, _ = lcf._initial_style_jaxpr(  # pylint: disable=protected-access
       new_body, plant_xs_in_tree,
-      tuple(carry_avals + x_avals + plant_xs_flat_avals))
+      tuple(carry_avals + x_avals + plant_xs_flat_avals),
+      jaxpr.jaxpr.debug_info)
   plant_vals = tree_util.tree_leaves(append_plants)
   out = lcf.scan_p.bind_with_trace(
       trace.parent_trace,
@@ -1416,7 +1422,8 @@ def _plant_while_rule(trace: HarvestTrace, *tracers, cond_jaxpr, body_jaxpr,
 
   in_tree = tree_util.tree_structure(init_avals)
   new_body_jaxpr, new_body_consts, _ = lcf._initial_style_jaxpr(  # pylint: disable=protected-access
-      new_body, in_tree, tuple(init_avals))
+      new_body, in_tree, tuple(init_avals),
+      body_jaxpr.jaxpr.debug_info)
   out = lcf.while_p.bind_with_trace(
       trace.parent_trace,
       (cond_const_vals + new_body_consts + init_vals),
@@ -1445,6 +1452,7 @@ def _plant_cond_rule(trace, *tracers, branches, linear=None):
       for branch in branches)
   _check_branch_metadata(branch_metadatas)
   plants = trace.context.plants
+  dbgs = [branch.jaxpr.debug_info for branch in branches]
   branch_funs = tuple(map(jex.core.jaxpr_as_fun, branches))
   planted_branches = tuple(
       functools.partial(plant(f, **plant_settings), plants)
@@ -1452,7 +1460,7 @@ def _plant_cond_rule(trace, *tracers, branches, linear=None):
   in_tree = tree_util.tree_structure(ops_avals)
   new_branch_jaxprs, consts, _ = (
       lcf._initial_style_jaxprs_with_common_consts(  # pylint: disable=protected-access
-          planted_branches, in_tree, ops_avals, lax.cond_p.name))
+          planted_branches, in_tree, ops_avals, dbgs))
   if linear is None:
     out = lax.cond_p.bind_with_trace(
         trace.parent_trace,
@@ -1486,7 +1494,8 @@ def _plant_checkpoint_rule(trace, *invals, jaxpr, policy, prevent_cse,
       plant(remat_fun, **plant_settings), plants)
   plant_jaxpr, consts, _ = lcf._initial_style_jaxpr(  # pylint: disable=protected-access
       planted_remat_fun, tree_util.tree_structure(invals),
-      tuple(jax_core.get_aval(t) for t in invals))
+      tuple(jax_core.get_aval(t) for t in invals),
+      jaxpr.debug_info)
   return ad_checkpoint.remat_p.bind_with_trace(
       trace.parent_trace,
       (*consts, *invals),
