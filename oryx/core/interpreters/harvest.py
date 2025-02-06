@@ -618,8 +618,8 @@ class ReapContext(HarvestContext):
         yield outs, (None, None)
 
     fwd, aux2 = _fwd_subtrace(fwd, self)
-    bwd_ = reap_function(lu.wrap_init(bwd), self.settings, True)
-    bwd = reap_wrapper_drop_aux(bwd_).call_wrapped
+    bwd_ = reap_function(bwd, self.settings, True)
+    bwd = reap_wrapper_drop_aux(bwd_)
     out_flat = primitive.bind_with_trace(
         trace.parent_trace, (fun, fwd, bwd, *vals),
         dict(out_trees=out_trees, symbolic_zeros=symbolic_zeros))
