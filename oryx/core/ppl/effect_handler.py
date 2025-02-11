@@ -242,7 +242,9 @@ def default_call_interpreter_rule(primitive: jax_core.CallPrimitive,
   """
   # Recursively use the effect handler for the call primitive's JAXpr.
   fun = lu.wrap_init(
-      functools.partial(eval_jaxpr_with_state, call_jaxpr, rules, []))
+      functools.partial(eval_jaxpr_with_state, call_jaxpr, rules, []),
+      debug_info=call_jaxpr.debug_info,
+  )
 
   state_invals, state_invals_tree = tree_util.tree_flatten((state, *invals))
   flat_fun, out_tree = api_util.flatten_fun_nokwargs(fun, state_invals_tree)
@@ -262,7 +264,10 @@ def _pjit_effect_handler_rule(rules, state, invals, **params):
   num_state = len(tree_util.tree_leaves(state))
 
   fun = lu.wrap_init(
-      functools.partial(eval_jaxpr_with_state, params['jaxpr'].jaxpr, rules, [])
+      functools.partial(
+          eval_jaxpr_with_state, params['jaxpr'].jaxpr, rules, []
+      ),
+      debug_info=params['jaxpr'].jaxpr.debug_info,
   )
   state_invals, state_invals_tree = tree_util.tree_flatten((state, *invals))
   flat_fun, out_tree = api_util.flatten_fun_nokwargs(fun, state_invals_tree)
