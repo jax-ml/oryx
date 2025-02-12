@@ -117,7 +117,8 @@ def eval_jaxpr_with_kwargs(jaxpr: jex.core.Jaxpr, consts: Iterable[Any], *args,
     if subjaxpr:
       subfuns = [
           lu.wrap_init(
-              functools.partial(eval_jaxpr_with_kwargs, subjaxpr, (), **kwargs))
+              functools.partial(eval_jaxpr_with_kwargs, subjaxpr, (), **kwargs),
+              debug_info=subjaxpr.jaxpr.debug_info)
       ]
     else:
       subfuns = []

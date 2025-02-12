@@ -58,7 +58,9 @@ def stage(f, dynamic=True):
   """Returns a function that stages a function to a ClosedJaxper."""
 
   def wrapped(*args, **kwargs):
-    fun = lu.wrap_init(f, kwargs)
+    fun = lu.wrap_init(
+        f, kwargs, debug_info=api_util.debug_info('oryx.stage', f, args, kwargs)
+    )
     flat_args, in_tree = tree_util.tree_flatten(args)
     flat_fun, out_tree = api_util.flatten_fun_nokwargs(fun, in_tree)
     flat_avals = safe_map(get_shaped_aval, flat_args)

@@ -450,10 +450,24 @@ def custom_layer_cau_batch(axis_data, vals, dims, *, num_consts, in_tree,
       assert len(vals_out) == len(dims_out)
       assert len(update_out) == len(dims_update)
       return vals_out + update_out, dims_out + dims_update
-  batched, out_dims = primitive.batch_fun(lu.wrap_init(
-      layer_cau_p.impl, dict(params, num_consts=num_consts, in_tree=in_tree,
-                             out_tree=out_tree,
-                             kwargs=kwargs)), axis_data, orig_dims)
+  batched, out_dims = primitive.batch_fun(
+      lu.wrap_init(
+          layer_cau_p.impl,
+          dict(
+              params,
+              num_consts=num_consts,
+              in_tree=in_tree,
+              out_tree=out_tree,
+              kwargs=kwargs,
+          ),
+          # TODO(https://github.com/jax-ml/jax/issues/26480)
+          debug_info=lu._missing_debug_info(  # type: ignore
+              'oryx.nn.base.custom_layer_cau_batch'
+          ),
+      ),
+      axis_data,
+      orig_dims,
+  )
   return batched.call_wrapped(*orig_vals), out_dims()
 batching.fancy_primitive_batchers[layer_cau_p] = custom_layer_cau_batch
 

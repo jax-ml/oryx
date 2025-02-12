@@ -363,7 +363,11 @@ def nest(f, *, scope: str):
   """
 
   def wrapped(*args, **kwargs):
-    fun = lu.wrap_init(f, kwargs)
+    fun = lu.wrap_init(
+        f,
+        kwargs,
+        debug_info=api_util.debug_info('oryx.core.nest', f, args, kwargs),
+    )
     flat_args, in_tree = tree_util.tree_flatten(args)
     flat_fun, out_tree = api_util.flatten_fun_nokwargs(fun, in_tree)
     out_flat = nest_p.bind(
@@ -733,7 +737,11 @@ def _call_and_reap(f, *, tag, allowlist, blocklist, exclusive):
   settings = HarvestSettings(tag, blocklist, allowlist, exclusive)
 
   def wrapped(*args, **kwargs):
-    fun = lu.wrap_init(f, kwargs)
+    fun = lu.wrap_init(
+        f,
+        kwargs,
+        debug_info=api_util.debug_info('oryx.call_and_reap', f, args, kwargs),
+    )
     flat_args, in_tree = tree_util.tree_flatten(args)
     flat_fun, out_tree = api_util.flatten_fun_nokwargs(fun, in_tree)
     flat_fun = reap_function(flat_fun, settings, False)
@@ -784,7 +792,10 @@ def _reap_metadata_wrapper(*args):
 
 def _get_harvest_metadata(closed_jaxpr, settings, *args):
   """Probes a jaxpr for metadata like its sown values."""
-  fun = lu.wrap_init(jex.core.jaxpr_as_fun(closed_jaxpr))
+  fun = lu.wrap_init(
+      jex.core.jaxpr_as_fun(closed_jaxpr),
+      debug_info=closed_jaxpr.jaxpr.debug_info,
+  )
 
   settings = HarvestSettings(settings.tag, settings.blocklist,
                              settings.allowlist, True)
@@ -1124,7 +1135,10 @@ def _reap_pjit_rule(trace, *invals, **params):
   closed_jaxpr = params['jaxpr']
   reap_metadata = _get_harvest_metadata(closed_jaxpr, settings, *invals)
   pjit_fun = jex.core.jaxpr_as_fun(closed_jaxpr)
-  reaped_pjit_fun = lu.wrap_init(_call_and_reap(pjit_fun, **reap_settings))
+  reaped_pjit_fun = lu.wrap_init(
+      _call_and_reap(pjit_fun, **reap_settings),
+      debug_info=closed_jaxpr.jaxpr.debug_info,
+  )
   in_tree = tree_util.tree_structure(invals)
   flat_fun, out_tree = api_util.flatten_fun_nokwargs(reaped_pjit_fun, in_tree)
 
@@ -1299,7 +1313,9 @@ def plant(f,
   settings = HarvestSettings(tag, blocklist, allowlist, exclusive)
 
   def wrapped(plants, *args, **kwargs):
-    fun = lu.wrap_init(f, kwargs)
+    fun = lu.wrap_init(
+        f, kwargs, debug_info=api_util.debug_info('oryx.plant', f, args, kwargs)
+    )
     flat_args, in_tree = tree_util.tree_flatten(args)
     flat_fun, out_tree = api_util.flatten_fun_nokwargs(fun, in_tree)
     all_args, all_tree = tree_util.tree_flatten((plants, flat_args))
@@ -1535,8 +1551,10 @@ def _plant_pjit_rule(trace, *invals, **params):
   plants = trace.context.plants
 
   pjit_fun = jex.core.jaxpr_as_fun(closed_jaxpr)
-  planted_pjit_fun = lu.wrap_init(functools.partial(
-      plant(pjit_fun, **plant_settings), plants))
+  planted_pjit_fun = lu.wrap_init(
+      functools.partial(plant(pjit_fun, **plant_settings), plants),
+      debug_info=closed_jaxpr.jaxpr.debug_info,
+  )
   in_tree = tree_util.tree_structure(invals)
   flat_fun, _ = api_util.flatten_fun_nokwargs(planted_pjit_fun, in_tree)
 
