@@ -678,7 +678,12 @@ class CallPrimitive(JaxExpression):
       sub_env = dict(zip(self.variable_names, args, strict=True))
       return evaluate(self.expression, sub_env)
 
-    fun = lu.wrap_init(f)
+    fun = lu.wrap_init(
+        f,
+        debug_info=api_util.debug_info(
+            'oryx.CallPrimitive.evaluate', f, operands, {}
+        ),
+    )
     return self.primitive.bind(fun, *operands, **self.params)  # pylint: disable=not-an-iterable
 
   def __str__(self):
@@ -720,7 +725,12 @@ class PjitPrimitive(CallPrimitive):
       sub_env = dict(zip(self.variable_names, args, strict=True))
       return evaluate(self.expression, sub_env)
 
-    fun = lu.wrap_init(f)
+    fun = lu.wrap_init(
+        f,
+        debug_info=api_util.debug_info(
+            'oryx.PjitPrimitive.evaluate', f, operands, {}
+        ),
+    )
     in_avals = tuple(api_util.shaped_abstractify(i) for i in operands)  # pylint: disable=not-an-iterable
     new_jaxpr = _to_jaxpr(fun, in_avals)
     new_params = {**self.params, 'jaxpr': new_jaxpr}

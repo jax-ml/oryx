@@ -123,15 +123,22 @@ class FlatPrimitive(jex.core.Primitive):
   def __init__(self, name):
     super(FlatPrimitive, self).__init__(name)
     self.multiple_results = True
+    # TODO(b/396086979): fill-in proper debug info.
+    self.debug_info = lu._missing_debug_info('oryx.core.FlatPrimitive')  # pylint: disable=protected-access
 
     def _abstract(*flat_avals, **params):
-      return pe.abstract_eval_fun(self.impl, *flat_avals, **params)
+      return pe.abstract_eval_fun(
+          self.impl, *flat_avals,
+          debug_info=self.debug_info,
+          **params)
 
     self.def_abstract_eval(_abstract)
 
     def _jvp(primals, tangents, **params):
       primals_out, tangents_out = ad.jvp(
-          lu.wrap_init(self.impl, params)).call_wrapped(primals, tangents)
+          lu.wrap_init(self.impl, params,
+                       debug_info=self.debug_info)).call_wrapped(primals,
+                                                                 tangents)
 
       return primals_out, tangents_out
 
@@ -139,7 +146,8 @@ class FlatPrimitive(jex.core.Primitive):
 
     def _batch(axis_data, args, dims, **params):
       batched, out_dims = batch_fun(
-          lu.wrap_init(self.impl, params), axis_data, dims)
+          lu.wrap_init(self.impl, params, debug_info=self.debug_info),
+          axis_data, dims)
       return batched.call_wrapped(*args), out_dims()
 
     batching.fancy_primitive_batchers[self] = _batch
@@ -159,7 +167,10 @@ def call_bind(prim, **params):
 
     def wrapped(*args, **kwargs):
       """Runs a function and binds it to a call primitive."""
-      fun = lu.wrap_init(f)
+      fun = lu.wrap_init(f,
+                         debug_info=api_util.debug_info('oryx.core.call_bind',
+                                                        f,
+                                                        args, kwargs))
       flat_args, in_tree = tree_util.tree_flatten((args, kwargs))
       flat_fun, out_tree = api_util.flatten_fun(fun, in_tree)
       out_tree_dest = None

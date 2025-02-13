@@ -301,7 +301,8 @@ def propagate(cell_type: Type[Cell],
           lu.wrap_init(
               functools.partial(propagate, cell_type, rules, call_jaxpr, (),
                                 initial_state=initial_state,
-                                reducer=reducer))
+                                reducer=reducer),
+              debug_info=call_jaxpr.debug_info)
       ]
       if eqn.primitive not in rules:
         rule = default_call_rules.get(eqn.primitive)
@@ -313,7 +314,8 @@ def propagate(cell_type: Type[Cell],
               functools.partial(propagate, cell_type, rules,
                                 eqn.params['jaxpr'].jaxpr, (),
                                 initial_state=initial_state,
-                                reducer=reducer))
+                                reducer=reducer),
+              debug_info=eqn.params['jaxpr'].jaxpr.debug_info)
       ]
       rule = _pjit_propagate_rule
     else:
