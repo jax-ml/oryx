@@ -384,6 +384,7 @@ class HarvestTrace(jax_core.Trace):
   """An evaluating trace that dispatches to a dynamic context."""
 
   def __init__(self, parent_trace, context):
+    super().__init__()
     self.parent_trace = parent_trace
     self.context = context
 
