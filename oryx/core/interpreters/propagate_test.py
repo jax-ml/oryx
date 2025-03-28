@@ -65,7 +65,7 @@ class Inverse(Cell):
     return Inverse(data[0], xs[0])
 
 
-def exp_rule(invals, outvals):
+def exp_rule(invals, outvals, **_):
   outval, = outvals
   inval, = invals
   if inval.bottom() and not outval.bottom():
@@ -135,7 +135,7 @@ class ILDJ(Cell):
     return ILDJ(data[0], xs[0], xs[1])
 
 
-def exp_ildj(invals, outvals):
+def exp_ildj(invals, outvals, **_):
   inval, = invals
   outval, = outvals
   if not inval.top() and outval.top():

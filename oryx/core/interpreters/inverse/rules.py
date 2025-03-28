@@ -52,14 +52,14 @@ Slice = slc.Slice
 safe_map = jax_util.safe_map
 custom_inverse = ci.custom_inverse
 
-register_elementwise(lax.exp_p)(np.log)
-register_elementwise(lax.log_p)(np.exp)
-register_elementwise(lax.sin_p)(np.arcsin)
-register_elementwise(lax.cos_p)(np.arccos)
-register_elementwise(lax.expm1_p)(np.log1p)
-register_elementwise(lax.log1p_p)(np.expm1)
+register_elementwise(lax.exp_p)(lambda x, **kwargs: np.log(x))
+register_elementwise(lax.log_p)(lambda x, **kwargs: np.exp(x))
+register_elementwise(lax.sin_p)(lambda x, **kwargs: np.arcsin(x))
+register_elementwise(lax.cos_p)(lambda x, **kwargs: np.arccos(x))
+register_elementwise(lax.expm1_p)(lambda x, **kwargs: np.log1p(x))
+register_elementwise(lax.log1p_p)(lambda x, **kwargs: np.expm1(x))
 register_elementwise(lax.neg_p)(lambda x: -x)
-register_elementwise(lax.sqrt_p)(np.square)
+register_elementwise(lax.sqrt_p)(lambda x, **kwargs: np.square(x))
 
 
 @register_elementwise(lax.integer_pow_p)

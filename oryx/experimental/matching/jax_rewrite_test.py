@@ -25,8 +25,8 @@ from oryx.experimental.matching import rules
 from oryx.internal import test_util
 
 
-Exp = lambda x: jr.Primitive(lax.exp_p, (x,), jr.Params())
-Log = lambda x: jr.Primitive(lax.log_p, (x,), jr.Params())
+Exp = lambda x: jr.Primitive(lax.exp_p, (x,), jr.Params(accuracy=None))
+Log = lambda x: jr.Primitive(lax.log_p, (x,), jr.Params(accuracy=None))
 
 
 class JaxExpressionTest(test_util.TestCase):
@@ -120,7 +120,8 @@ class MatchingTest(test_util.TestCase):
     expr = Exp(jr.Literal(1.))
     self.assertDictEqual(
         matcher.match(pattern, expr),
-        dict(prim=lax.exp_p, args=(jr.Literal(1.),), params=jr.Params()))
+        dict(prim=lax.exp_p, args=(jr.Literal(1.),),
+             params=jr.Params(accuracy=None)))
 
   def test_can_match_value_inside_params(self):
     pattern = jr.Primitive(matcher.Dot, (matcher.Segment(name=None),),
