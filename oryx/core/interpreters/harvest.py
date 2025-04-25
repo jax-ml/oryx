@@ -893,6 +893,10 @@ def _reap_scan_rule(trace: HarvestTrace, *vals, length, reverse, jaxpr,
         lambda x: jnp.zeros(x.shape, x.dtype),
         reap_carry_flat_avals,
     )
+  new_linear = (
+      linear[:len(consts) + len(carry_vals)] +
+      (False,) * len(dummy_reap_carry_vals) +
+      linear[len(linear) - len(xs_vals):])
   out = lax.scan_p.bind_with_trace(
       trace.parent_trace,
       (consts + carry_vals + dummy_reap_carry_vals + xs_vals),
@@ -901,9 +905,7 @@ def _reap_scan_rule(trace: HarvestTrace, *vals, length, reverse, jaxpr,
            jaxpr=new_body_jaxpr,
            num_consts=len(consts),
            num_carry=len(carry_vals + dummy_reap_carry_vals),
-           linear=(
-               linear[:len(consts)] + (False,) * len(dummy_reap_carry_vals) +
-               linear[len(consts):]),
+           linear=new_linear,
            unroll=unroll,
            _split_transpose=_split_transpose))
   (carry_out, carry_reaps, carry_preds), (ys, ys_reaps) = (
@@ -1389,6 +1391,9 @@ def _plant_scan_rule(trace: HarvestTrace, *tracers, length, reverse, jaxpr,
       tuple(carry_avals + x_avals + plant_xs_flat_avals),
       jaxpr.jaxpr.debug_info)
   plant_vals = tree_util.tree_leaves(append_plants)
+  new_linear = (
+      linear[:len(consts) + len(carry_vals) + len(xs_vals)] +
+      (False,) * len(plant_vals))
   out = lcf.scan_p.bind_with_trace(
       trace.parent_trace,
       (consts + carry_vals + xs_vals + plant_vals),
@@ -1397,7 +1402,7 @@ def _plant_scan_rule(trace: HarvestTrace, *tracers, length, reverse, jaxpr,
            jaxpr=new_body_jaxpr,
            num_consts=len(consts),
            num_carry=num_carry,
-           linear=linear + (False,) * len(plant_vals),
+           linear=new_linear,
            unroll=unroll,
            _split_transpose=_split_transpose))
   return out
