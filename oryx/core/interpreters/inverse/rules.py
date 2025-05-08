@@ -20,7 +20,7 @@ This module also monkey patches `jax.nn.sigmoid`, `jax.scipy.special.logit`, and
 import inspect
 import jax
 from jax import lax
-from jax import util as jax_util
+from jax._src import util as jax_util
 import jax.numpy as np
 
 from oryx.core import primitive

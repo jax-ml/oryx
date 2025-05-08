@@ -14,7 +14,7 @@
 
 """Wraps TFP bijectors for use with Jax."""
 from jax import tree_util
-from jax import util as jax_util
+from jax._src import util as jax_util
 import jax.numpy as np
 
 from oryx.core import primitive

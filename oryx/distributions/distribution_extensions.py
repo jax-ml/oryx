@@ -19,7 +19,7 @@ from typing import Optional
 
 import jax
 from jax import tree_util
-from jax import util as jax_util
+from jax._src import util as jax_util
 from jax.interpreters import batching
 from oryx.core import ppl
 from oryx.core import primitive

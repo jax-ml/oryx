@@ -41,7 +41,7 @@ from typing import Any, Dict, Iterable, Optional
 import jax
 from jax import random
 from jax import tree_util
-from jax import util as jax_util
+from jax._src import util as jax_util
 import jax.extend as jex
 from jax.extend import linear_util as lu
 

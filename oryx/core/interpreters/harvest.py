@@ -150,12 +150,12 @@ from typing import Any, Callable, Dict, FrozenSet, Hashable, Iterable, List, Opt
 from jax import api_util
 from jax import lax
 from jax import tree_util
-from jax import util as jax_util
 from jax._src import ad_checkpoint
 from jax._src import core as jax_core
 from jax._src import effects
 from jax._src import pjit
 from jax._src import sharding_impls
+from jax._src import util as jax_util
 from jax._src.lax import control_flow as lcf
 import jax.extend as jex
 import jax.extend.linear_util as lu

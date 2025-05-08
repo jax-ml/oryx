@@ -227,8 +227,6 @@ import types
 
 from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 
-from jax import util as jax_util
-
 from oryx.core import primitive
 from oryx.core.interpreters import harvest
 from oryx.core.interpreters import log_prob as lp

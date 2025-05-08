@@ -19,9 +19,9 @@ from typing import Any, Dict, Generator, List, Hashable
 
 from jax import api_util
 from jax import tree_util
-from jax import util as jax_util
 from jax._src import core as jax_core
 from jax._src import dtypes
+from jax._src import util as jax_util
 import jax.extend as jex
 from jax.extend import linear_util as lu
 from jax.interpreters import partial_eval as pe
