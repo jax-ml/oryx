@@ -1011,8 +1011,9 @@ def _check_branch_metadata(branch_metadatas):
         raise ValueError(f'Mismatched dtype between branches: \'{name}\'.')
 
 
-def _reap_cond_rule(trace, *tracers, branches, linear=None):
+def _reap_cond_rule(trace, *tracers, branches, linear=None, **params):
   """Reaps each path of the `cond`."""
+  del params
   index_val, ops_vals = tracers[0], tracers[1:]
   _, ops_avals = tree_util.tree_map(lambda x: jax_core.get_aval(x),  # pylint: disable=unnecessary-lambda
                                     (index_val, ops_vals))
@@ -1458,8 +1459,9 @@ def _plant_while_rule(trace: HarvestTrace, *tracers, cond_jaxpr, body_jaxpr,
 plant_custom_rules[lcf.while_p] = _plant_while_rule
 
 
-def _plant_cond_rule(trace, *tracers, branches, linear=None):
+def _plant_cond_rule(trace, *tracers, branches, linear=None, **params):
   """Injects the same values into both branches of a conditional."""
+  del params
   index_val, ops_vals = tracers[0], tracers[1:]
   ops_avals = tree_util.tree_map(lambda x: jax_core.get_aval(x), ops_vals)  # pylint: disable=unnecessary-lambda
   settings = trace.context.settings
