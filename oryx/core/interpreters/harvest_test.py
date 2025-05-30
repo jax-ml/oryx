@@ -1,4 +1,4 @@
-# Copyright 2024 The oryx Authors.
+# Copyright 2025 The oryx Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -37,8 +37,8 @@ import jax
 from jax import ad_checkpoint
 from jax import config
 from jax import lax
-from jax._src import pjit
 from jax.experimental import mesh_utils
+from jax.experimental import pjit
 from jax.experimental import shard_map
 import jax.numpy as jnp
 import numpy as np

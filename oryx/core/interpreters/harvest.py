@@ -1,4 +1,4 @@
-# Copyright 2024 The oryx Authors.
+# Copyright 2025 The oryx Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -153,10 +153,10 @@ from jax import tree_util
 from jax._src import ad_checkpoint
 from jax._src import core as jax_core
 from jax._src import effects
-from jax._src import pjit
 from jax._src import sharding_impls
 from jax._src import util as jax_util
 from jax._src.lax import control_flow as lcf
+from jax.experimental import pjit
 import jax.extend as jex
 import jax.extend.linear_util as lu
 from jax.interpreters import ad

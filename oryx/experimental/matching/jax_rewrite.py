@@ -1,4 +1,4 @@
-# Copyright 2024 The oryx Authors.
+# Copyright 2025 The oryx Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -199,8 +199,8 @@ from typing import Any, Callable, Dict, Iterator, Optional, Sequence, Tuple, Uni
 import jax
 from jax import api_util
 from jax import tree_util
-from jax._src import pjit
 from jax._src import util as jax_util
+from jax.experimental import pjit
 import jax.extend as jex
 from jax.extend import linear_util as lu
 from jax.interpreters import partial_eval as pe
