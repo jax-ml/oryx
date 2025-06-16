@@ -251,7 +251,8 @@ class Layer(state.Module, metaclass=abc.ABCMeta):
       args = (rng,) + args
       has_rng = True
     kwargs = dict(kwargs, has_rng=has_rng)
-    return primitive.initial_style_bind(layer_cau_p, kwargs=kwargs)(
+    kwargs_tuple = tuple(kwargs.items())
+    return primitive.initial_style_bind(layer_cau_p, kwargs=kwargs_tuple)(
         Layer._call_and_update)(self, *args, **kwargs)
 
   def _call_and_update(self, *args, has_rng=False, **kwargs):
@@ -414,10 +415,11 @@ def custom_layer_cau_batch(axis_data, vals, dims, *, num_consts, in_tree,
   args = tree_util.tree_unflatten(in_tree, vals)
   dims_ = [not_mapped if dim is None else dim for dim in dims]
   layer, args = args[0], args[1:]
+  kwargs_dict = dict(kwargs)
   if hasattr(layer, '_call_and_update_batched'):
     num_params = len(tree_util.tree_leaves(layer))
     layer_dims, arg_dims = dims_[:num_params], dims_[num_params:]
-    if kwargs['has_rng']:
+    if kwargs_dict['has_rng']:
       rng, args = args[0], args[1:]
       rng_dim, arg_dims = arg_dims[0], arg_dims[1:]
     mapping_over_layer = all(layer_dim is not not_mapped for
@@ -426,21 +428,21 @@ def custom_layer_cau_batch(axis_data, vals, dims, *, num_consts, in_tree,
                             arg_dim in arg_dims)
     assert mapping_over_layer or mapping_over_args, (layer_dims, arg_dims)
     if not mapping_over_layer and mapping_over_args:
-      if kwargs['has_rng']:
+      if kwargs_dict['has_rng']:
         if rng_dim is not not_mapped:
           arg_dims = tuple(None if dim is not_mapped else dim
                            for dim in arg_dims)
           map_fun = jax.vmap(
               lambda layer, rng, *args: _layer_cau_batched(layer, rng, *args,  # pylint: disable=unnecessary-lambda, g-long-lambda
-                                                           **kwargs),
+                                                           **kwargs_dict),
               in_axes=(None, rng_dim) + (None,) * len(arg_dims))
         else:
           map_fun = lambda layer, *args: _layer_cau_batched(layer, *args,  # pylint: disable=unnecessary-lambda, g-long-lambda
-                                                            **kwargs)
+                                                            **kwargs_dict)
         vals_out, update_out = map_fun(layer, rng, *args)
       else:
         vals_out, update_out = _layer_cau_batched(layer, *args,
-                                                  **kwargs)
+                                                  **kwargs_dict)
       vals_out = tree_util.tree_leaves(vals_out)
       update_out = tree_util.tree_leaves(update_out)
       assert all(dim == 0 for dim in arg_dims)
