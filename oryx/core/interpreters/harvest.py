@@ -156,7 +156,6 @@ from jax._src import effects
 from jax._src import sharding_impls
 from jax._src import util as jax_util
 from jax._src.lax import control_flow as lcf
-from jax.experimental import pjit
 import jax.extend as jex
 import jax.extend.linear_util as lu
 from jax.interpreters import ad
@@ -1159,7 +1158,7 @@ def _reap_pjit_rule(trace, *invals, **params):
       'in_layouts': in_layouts,
       'out_layouts': (None,) * len(out_avals)
   }
-  outvals = pjit.pjit_p.bind_with_trace(
+  outvals = jex.core.primitives.jit_p.bind_with_trace(
       trace.parent_trace, (*final_consts, *invals), new_params)
 
   out, reaps, preds = tree_util.tree_unflatten(out_tree(), outvals)
@@ -1169,7 +1168,7 @@ def _reap_pjit_rule(trace, *invals, **params):
   return out
 
 
-reap_custom_rules[pjit.pjit_p] = _reap_pjit_rule
+reap_custom_rules[jex.core.primitives.jit_p] = _reap_pjit_rule
 
 
 plant_custom_rules = {}
@@ -1579,13 +1578,13 @@ def _plant_pjit_rule(trace, *invals, **params):
       'in_layouts': in_layouts,
       'out_layouts': (None,) * len(out_avals),
   }
-  outvals = pjit.pjit_p.bind_with_trace(
+  outvals = jex.core.primitives.jit_p.bind_with_trace(
       trace.parent_trace, (*final_consts, *invals), new_params)
 
   return outvals
 
 
-plant_custom_rules[pjit.pjit_p] = _plant_pjit_rule
+plant_custom_rules[jex.core.primitives.jit_p] = _plant_pjit_rule
 
 
 def harvest(f,

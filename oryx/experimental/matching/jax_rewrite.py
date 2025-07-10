@@ -200,7 +200,6 @@ import jax
 from jax import api_util
 from jax import tree_util
 from jax._src import util as jax_util
-from jax.experimental import pjit
 import jax.extend as jex
 from jax.extend import linear_util as lu
 from jax.interpreters import partial_eval as pe
@@ -734,7 +733,7 @@ class PjitPrimitive(CallPrimitive):
     in_avals = tuple(api_util.shaped_abstractify(i) for i in operands)  # pylint: disable=not-an-iterable
     new_jaxpr = _to_jaxpr(fun, in_avals)
     new_params = {**self.params, 'jaxpr': new_jaxpr}
-    return pjit.pjit_p.bind(*operands, **new_params)  # pylint: disable=not-an-iterable
+    return jex.core.primitives.jit_p.bind(*operands, **new_params)  # pylint: disable=not-an-iterable
 
 
 custom_expressions = {}
@@ -795,7 +794,7 @@ def jaxpr_to_expressions(jaxpr: jex.core.Jaxpr) -> Tuple[Expr, ...]:
       variable_names = tuple(map(str, call_jaxpr.invars))
       out = CallPrimitive(eqn.primitive, operands, call_expression,
                           Params(params), variable_names)
-    elif eqn.primitive is pjit.pjit_p:
+    elif eqn.primitive is jex.core.primitives.jit_p:
       jaxpr_ = eqn.params['jaxpr'].jaxpr
       pjit_expression = BoundExpression(jaxpr_to_expressions(jaxpr_), {})
       variable_names = tuple(map(str, jaxpr_.invars))

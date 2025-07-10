@@ -36,7 +36,6 @@ from jax import api_util
 from jax import tree_util
 from jax._src import core as jax_core
 from jax._src import sharding_impls
-from jax.experimental import pjit
 import jax.extend as jex
 from jax.extend import linear_util as lu
 from jax.extend.core import primitives
@@ -308,7 +307,7 @@ def propagate(cell_type: Type[Cell],
         rule = default_call_rules.get(eqn.primitive)
       else:
         rule = rules[eqn.primitive]
-    elif eqn.primitive is pjit.pjit_p:
+    elif eqn.primitive is jex.core.primitives.jit_p:
       subfuns = [
           lu.wrap_init(
               functools.partial(propagate, cell_type, rules,
@@ -400,5 +399,5 @@ def _pjit_propagate_rule(incells, outcells, **params):
       'in_layouts': in_layouts,
       'out_layouts': out_layouts,
   }
-  flat_out = pjit.pjit_p.bind(*flat_vals, **new_params)
+  flat_out = jex.core.primitives.jit_p.bind(*flat_vals, **new_params)
   return tree_util.tree_unflatten(out_tree(), flat_out)

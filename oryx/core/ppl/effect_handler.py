@@ -106,7 +106,6 @@ from jax import tree_util
 from jax._src import core as jax_core
 from jax._src import sharding_impls
 from jax._src import util as jax_util
-from jax.experimental import pjit
 import jax.extend as jex
 from jax.extend import linear_util as lu
 from jax.interpreters import partial_eval as pe
@@ -295,11 +294,12 @@ def _pjit_effect_handler_rule(rules, state, invals, **params):
       'out_layouts': out_layouts,
   }
 
-  ans_state = pjit.pjit_p.bind(*state_invals, **new_params)
+  ans_state = jex.core.primitives.jit_p.bind(*state_invals, **new_params)
   return tree_util.tree_unflatten(out_tree(), ans_state)
 
 
-custom_effect_handler_rules[pjit.pjit_p] = _pjit_effect_handler_rule
+custom_effect_handler_rules[jex.core.primitives.jit_p] = (
+    _pjit_effect_handler_rule)
 
 
 def make_effect_handler(

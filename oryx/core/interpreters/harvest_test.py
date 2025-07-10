@@ -38,8 +38,8 @@ from jax import ad_checkpoint
 from jax import config
 from jax import lax
 from jax.experimental import mesh_utils
-from jax.experimental import pjit
 from jax.experimental import shard_map
+import jax.extend as jex
 import jax.numpy as jnp
 import numpy as np
 from oryx.core.interpreters import harvest
@@ -398,7 +398,7 @@ class PlantTest(test_util.TestCase):
 
     jaxpr = jax.make_jaxpr(plant_variables(f))({'x': 2.}, 1.)
     primitives = set(eqn.primitive for eqn in jaxpr.jaxpr.eqns)
-    self.assertIn(pjit.pjit_p, primitives)
+    self.assertIn(jex.core.primitives.jit_p, primitives)
 
   def test_should_plant_in_pmap(self):
 
