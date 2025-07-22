@@ -717,7 +717,7 @@ def call_and_reap(f,
         return value
       else:
         return tree_util.tree_map(
-            lambda leaf: lax.select(pred, leaf, lax.zeros_like_array(leaf)),
+            lambda leaf: lax.select(pred, leaf, jnp.zeros_like(leaf)),
             value,
         )
 
