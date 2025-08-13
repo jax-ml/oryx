@@ -43,6 +43,13 @@ NDSlice = slc.NDSlice
 InverseAndILDJ = core.InverseAndILDJ
 
 
+def _replace_nones(sentinel, tree):
+  return tree_util.tree_map(
+      lambda x: sentinel if x is None else x,
+      tree,
+      is_leaf=lambda x: x is None)
+
+
 class CustomInverse:
   """Wrapper class for functions with a custom inverse."""
 
@@ -111,8 +118,8 @@ class CustomInverse:
         # `incells`. We use the private `_replace_nones` feature in JAX to
         # replace it with a sentinel that won't be removed when flattening.
         none_ = object()
-        new_invals = tree_util._replace_nones(none_, new_invals)  # pylint: disable=protected-access
-        new_ildjs = tree_util._replace_nones(none_, new_ildjs)  # pylint: disable=protected-access
+        new_invals = _replace_nones(none_, new_invals)  # pylint: disable=protected-access
+        new_ildjs = _replace_nones(none_, new_ildjs)  # pylint: disable=protected-access
         new_flat_invals = tree_util.tree_leaves(new_invals)
         new_flat_ildjs = tree_util.tree_leaves(new_ildjs)
         inslices = [
