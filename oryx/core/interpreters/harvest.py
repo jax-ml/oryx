@@ -156,12 +156,12 @@ from jax._src import effects
 from jax._src import sharding_impls
 from jax._src import util as jax_util
 from jax._src.interpreters import ad
+from jax._src.interpreters import partial_eval as pe
 from jax._src.lax import control_flow as lcf
 import jax.extend as jex
 import jax.extend.linear_util as lu
 from jax.interpreters import batching
 from jax.interpreters import mlir
-from jax.interpreters import partial_eval as pe
 import jax.numpy as jnp
 
 

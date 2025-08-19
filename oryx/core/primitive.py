@@ -22,10 +22,10 @@ from jax._src import core as jax_core
 from jax._src import util as jax_util
 from jax._src.interpreters import ad
 from jax._src.interpreters import batching
+from jax._src.interpreters import partial_eval as pe
 import jax.extend as jex
 from jax.extend import linear_util as lu
 from jax.interpreters import mlir
-from jax.interpreters import partial_eval as pe
 
 from oryx.core import trace_util
 
