@@ -245,7 +245,7 @@ def _to_jaxpr(flat_fun, in_avals):
 
 def propagate(cell_type: Type[Cell],
               rules: Dict[jex.core.Primitive, PropagationRule],
-              jaxpr: pe.Jaxpr,
+              jaxpr: jex.core.Jaxpr,
               constcells: List[Cell],
               incells: List[Cell],
               outcells: List[Cell],
