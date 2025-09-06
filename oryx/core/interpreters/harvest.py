@@ -793,7 +793,7 @@ def _get_harvest_metadata(closed_jaxpr, settings, *args):
   """Probes a jaxpr for metadata like its sown values."""
   fun = lu.wrap_init(
       jex.core.jaxpr_as_fun(closed_jaxpr),
-      debug_info=closed_jaxpr.jaxpr.debug_info,
+      debug_info=closed_jaxpr.jaxpr.debug_info.with_unknown_names(),
   )
 
   settings = HarvestSettings(settings.tag, settings.blocklist,
@@ -885,7 +885,7 @@ def _reap_scan_rule(trace: HarvestTrace, *vals, length, reverse, jaxpr,
   new_body_jaxpr, consts, out_tree = lcf._initial_style_jaxpr(  # pylint: disable=protected-access
       new_body, reap_carry_in_tree,
       tuple(carry_avals + reap_carry_flat_avals + x_avals),
-      jaxpr.jaxpr.debug_info)
+      jaxpr.jaxpr.debug_info.with_unknown_names())
 
   with jax_core.set_current_trace(trace.parent_trace):
     dummy_reap_carry_vals = tree_util.tree_map(
@@ -1071,7 +1071,7 @@ def _reap_checkpoint_rule(trace, *invals, jaxpr, policy, prevent_cse,
   reap_jaxpr, consts, out_tree = lcf._initial_style_jaxpr(  # pylint: disable=protected-access
       reaped_remat_fun, tree_util.tree_structure(invals),
       tuple(jax_core.get_aval(t) for t in invals),
-      jaxpr.debug_info)
+      jaxpr.debug_info.with_unknown_names())
   outvals = ad_checkpoint.remat_p.bind_with_trace(
       trace.parent_trace,
       (*consts, *invals),
@@ -1139,7 +1139,7 @@ def _reap_pjit_rule(trace, *invals, **params):
   pjit_fun = jex.core.jaxpr_as_fun(closed_jaxpr)
   reaped_pjit_fun = lu.wrap_init(
       _call_and_reap(pjit_fun, **reap_settings),
-      debug_info=closed_jaxpr.jaxpr.debug_info,
+      debug_info=closed_jaxpr.jaxpr.debug_info.with_unknown_names(),
   )
   in_tree = tree_util.tree_structure(invals)
   flat_fun, out_tree = api_util.flatten_fun_nokwargs(reaped_pjit_fun, in_tree)

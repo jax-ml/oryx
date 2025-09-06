@@ -266,7 +266,7 @@ def _pjit_effect_handler_rule(rules, state, invals, **params):
       functools.partial(
           eval_jaxpr_with_state, params['jaxpr'].jaxpr, rules, []
       ),
-      debug_info=params['jaxpr'].jaxpr.debug_info,
+      debug_info=params['jaxpr'].jaxpr.debug_info.with_unknown_names(),
   )
   state_invals, state_invals_tree = tree_util.tree_flatten((state, *invals))
   flat_fun, out_tree = api_util.flatten_fun_nokwargs(fun, state_invals_tree)

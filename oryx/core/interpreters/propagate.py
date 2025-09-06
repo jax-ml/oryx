@@ -382,7 +382,8 @@ def _pjit_propagate_rule(incells, outcells, **params):
   f, out_tree = flat_propagate(f, in_tree)
 
   new_jaxpr = _to_jaxpr(
-      f, tuple(api_util.shaped_abstractify(i) for i in flat_vals))
+      f.with_unknown_names(),
+      tuple(api_util.shaped_abstractify(i) for i in flat_vals))
 
   in_shardings = (sharding_impls.UNSPECIFIED,) * len(flat_vals)
   donated_invars = (False,) * len(flat_vals)
