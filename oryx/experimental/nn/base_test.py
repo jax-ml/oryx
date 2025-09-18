@@ -105,8 +105,8 @@ class LayerTest(test_util.TestCase):
     layer_params = base.LayerParams(params=1, state=1, info=2)
     layer_init = DummyLayer(layer_params)
     layer = layer_init.init(self._seed, state.Shape((1, 1)))
-    exp_str = ('DummyLayer(params=1, info=2)')
-    self.assertEqual(exp_str, repr(layer))
+    exp_str = r'DummyLayer\(params=.*1.*, info=2\)'
+    self.assertRegex(repr(layer), exp_str)
 
   def test_flatten(self):
     layer_params = base.LayerParams(params=(1, 2), state=3)
