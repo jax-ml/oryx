@@ -230,6 +230,9 @@ class InverseTest(test_util.TestCase):
         ildj_, -jnp.log(jnp.abs(jax.jacrev(f2)(1.5))), atol=1e-6, rtol=1e-6)
 
   def test_inverse_of_pmap(self):
+    if jax.config.jax_pmap_shmap_merge:
+      raise unittest.SkipTest('No registered inverse for shard_map.')
+
     x = jnp.ones(jax.local_device_count())
 
     def f(x):
@@ -245,6 +248,8 @@ class InverseTest(test_util.TestCase):
         rtol=1e-6)
 
   def test_pmap_forward(self):
+    if jax.config.jax_pmap_shmap_merge:
+      raise unittest.SkipTest('No registered inverse for shard_map.')
     if jax.local_device_count() < 2:
       raise unittest.SkipTest('Not enough devices for test.')
 
