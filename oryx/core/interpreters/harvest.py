@@ -822,6 +822,30 @@ def _update_clobber_carry(carry_reaps, carry_preds, name, val, preds, mode):
     carry_reaps[name] = val
 
 
+@jax_util.weakref_lru_cache
+def _initial_style_jaxpr(
+    fun: Callable[..., Any],
+    in_tree: tree_util.PyTreeDef,
+    in_avals: list[jax_core.AbstractValue],
+    debug_info: jax_core.DebugInfo,
+) -> tuple[jax_core.ClosedJaxpr, list[Any], tree_util.PyTreeDef]:
+  jaxpr, out_tree = pe.trace_to_jaxpr(fun, in_tree, in_avals, debug_info)
+  jaxpr_no_constvars, consts = pe.separate_consts(jaxpr)
+  return jaxpr_no_constvars, consts, out_tree
+
+
+def _initial_style_jaxprs_with_common_consts(
+    funs: list[Callable[..., Any]],
+    in_tree: tree_util.PyTreeDef,
+    in_avals: list[jax_core.AbstractValue | jax_core.AvalQDD],
+    debug_infos: list[jax_core.DebugInfo]):
+  jaxprs_, out_trees = zip(*[pe.trace_to_jaxpr(
+      f, in_tree, in_avals, dbg) for f, dbg in zip(funs, debug_infos)])
+  jaxprs_, all_consts = zip(*[pe.separate_consts(j) for j in jaxprs_])
+  jaxprs, consts = lcf._merge_common_consts(jaxprs_, all_consts)  # pylint: disable=protected-access
+  return jaxprs, consts, out_trees
+
+
 def _reap_scan_rule(trace: HarvestTrace, *vals, length, reverse, jaxpr,
                     num_consts, num_carry, linear, unroll, _split_transpose):
   """Reaps the body of a scan to pull out `clobber` and `append` sows."""
@@ -882,7 +906,7 @@ def _reap_scan_rule(trace: HarvestTrace, *vals, length, reverse, jaxpr,
     }
     return (carry_out, carry_reaps, carry_preds), (y, xs_reaps)
 
-  new_body_jaxpr, consts, out_tree = lcf._initial_style_jaxpr(  # pylint: disable=protected-access
+  new_body_jaxpr, consts, out_tree = _initial_style_jaxpr(
       new_body, reap_carry_in_tree,
       tuple(carry_avals + reap_carry_flat_avals + x_avals),
       jaxpr.jaxpr.debug_info.with_unknown_names())
@@ -968,10 +992,10 @@ def _reap_while_rule(trace: HarvestTrace, *tracers, cond_jaxpr, body_jaxpr,
   new_in_avals, new_in_tree = tree_util.tree_flatten(
       (init_avals, reap_avals, cond_avals)
   )
-  new_cond_jaxpr, cond_consts, _ = lcf._initial_style_jaxpr(  # pylint: disable=protected-access
+  new_cond_jaxpr, cond_consts, _ = _initial_style_jaxpr(
       new_cond, new_in_tree, tuple(new_in_avals),
       cond_jaxpr.jaxpr.debug_info)
-  new_body_jaxpr, body_consts, out_tree = lcf._initial_style_jaxpr(  # pylint: disable=protected-access
+  new_body_jaxpr, body_consts, out_tree = _initial_style_jaxpr(
       new_body, new_in_tree, tuple(new_in_avals),
       body_jaxpr.jaxpr.debug_info)
   dummy_reap_vals = tree_util.tree_map(lambda x: jnp.zeros(x.shape, x.dtype),
@@ -1028,11 +1052,10 @@ def _reap_cond_rule(trace, *tracers, branches, linear=None, **params):
   _check_branch_metadata(branch_metadatas)
   dbgs = [branch.jaxpr.debug_info for branch in branches]
   branch_funs = tuple(map(jex.core.jaxpr_as_fun, branches))
-  reaped_branches = tuple(
-      _call_and_reap(f, **reap_settings) for f in branch_funs)
+  reaped_branches = [_call_and_reap(f, **reap_settings) for f in branch_funs]
   in_tree = tree_util.tree_structure(ops_avals)
   new_branch_jaxprs, consts, out_trees = (
-      lcf._initial_style_jaxprs_with_common_consts(  # pylint: disable=protected-access
+      _initial_style_jaxprs_with_common_consts(
           reaped_branches, in_tree, ops_avals, dbgs))
   if linear is None:
     out = lax.cond_p.bind_with_trace(
@@ -1068,7 +1091,7 @@ def _reap_checkpoint_rule(trace, *invals, jaxpr, policy, prevent_cse,
   reap_metadata = _get_harvest_metadata(closed_jaxpr, settings, *invals)
   remat_fun = jex.core.jaxpr_as_fun(closed_jaxpr)
   reaped_remat_fun = _call_and_reap(remat_fun, **reap_settings)
-  reap_jaxpr, consts, out_tree = lcf._initial_style_jaxpr(  # pylint: disable=protected-access
+  reap_jaxpr, consts, out_tree = _initial_style_jaxpr(
       reaped_remat_fun, tree_util.tree_structure(invals),
       tuple(jax_core.get_aval(t) for t in invals),
       jaxpr.debug_info.with_unknown_names())
@@ -1386,7 +1409,7 @@ def _plant_scan_rule(trace: HarvestTrace, *tracers, length, reverse, jaxpr,
     carry_out, y = jax_util.split_list(out, [num_carry])
     return carry_out, y
 
-  new_body_jaxpr, consts, _ = lcf._initial_style_jaxpr(  # pylint: disable=protected-access
+  new_body_jaxpr, consts, _ = _initial_style_jaxpr(
       new_body, plant_xs_in_tree,
       tuple(carry_avals + x_avals + plant_xs_flat_avals),
       jaxpr.jaxpr.debug_info)
@@ -1442,7 +1465,7 @@ def _plant_while_rule(trace: HarvestTrace, *tracers, cond_jaxpr, body_jaxpr,
     return carry
 
   in_tree = tree_util.tree_structure(init_avals)
-  new_body_jaxpr, new_body_consts, _ = lcf._initial_style_jaxpr(  # pylint: disable=protected-access
+  new_body_jaxpr, new_body_consts, _ = _initial_style_jaxpr(
       new_body, in_tree, tuple(init_avals),
       body_jaxpr.jaxpr.debug_info)
   out = lcf.while_p.bind_with_trace(
@@ -1476,12 +1499,12 @@ def _plant_cond_rule(trace, *tracers, branches, linear=None, **params):
   plants = trace.context.plants
   dbgs = [branch.jaxpr.debug_info for branch in branches]
   branch_funs = tuple(map(jex.core.jaxpr_as_fun, branches))
-  planted_branches = tuple(
+  planted_branches = [
       functools.partial(plant(f, **plant_settings), plants)
-      for f in branch_funs)
+      for f in branch_funs]
   in_tree = tree_util.tree_structure(ops_avals)
   new_branch_jaxprs, consts, _ = (
-      lcf._initial_style_jaxprs_with_common_consts(  # pylint: disable=protected-access
+      _initial_style_jaxprs_with_common_consts(
           planted_branches, in_tree, ops_avals, dbgs))
   if linear is None:
     out = lax.cond_p.bind_with_trace(
@@ -1514,7 +1537,7 @@ def _plant_checkpoint_rule(trace, *invals, jaxpr, policy, prevent_cse,
   remat_fun = jex.core.jaxpr_as_fun(closed_jaxpr)
   planted_remat_fun = functools.partial(
       plant(remat_fun, **plant_settings), plants)
-  plant_jaxpr, consts, _ = lcf._initial_style_jaxpr(  # pylint: disable=protected-access
+  plant_jaxpr, consts, _ = _initial_style_jaxpr(
       planted_remat_fun, tree_util.tree_structure(invals),
       tuple(jax_core.get_aval(t) for t in invals),
       jaxpr.debug_info)
