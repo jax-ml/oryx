@@ -17,6 +17,7 @@ import contextlib
 import threading
 from typing import Any, Dict, Generator, List, Hashable
 
+import jax
 from jax import api_util
 from jax import tree_util
 from jax._src import core as jax_core
@@ -43,7 +44,7 @@ def get_shaped_aval(x):
   if hasattr(x, 'dtype') and hasattr(x, 'shape'):
     return jax_core.ShapedArray(
         x.shape, dtypes.canonicalize_dtype(x.dtype, allow_extended_dtype=True))
-  return jax_core.get_aval(x)
+  return jax.typeof(x)
 
 
 def pv_like(x, abstract=True):

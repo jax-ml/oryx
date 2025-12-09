@@ -147,6 +147,7 @@ import dataclasses
 import functools
 from typing import Any, Callable, Dict, FrozenSet, Hashable, Iterable, List, Optional, Tuple, Union
 
+import jax
 from jax import api_util
 from jax import lax
 from jax import tree_util
@@ -514,7 +515,7 @@ class ReapContext(HarvestContext):
         raise ValueError(f'Variable has already been reaped: {name}')
     avals = tree_util.tree_unflatten(
         tree,
-        [jax_core.get_aval(v) for v in values])
+        [jax.typeof(v) for v in values])
     vals = tree_util.tree_unflatten(tree, values)
     pred = None
     if mode == 'cond_clobber':
@@ -803,7 +804,7 @@ def _get_harvest_metadata(closed_jaxpr, settings, *args):
   flat_args, in_tree = tree_util.tree_flatten(args)
   flat_fun, out_tree = api_util.flatten_fun_nokwargs(fun, in_tree)
   in_avals = jax_util.safe_map(
-      lambda a: jax_core.get_aval(a),
+      lambda a: jax.typeof(a),
       flat_args)
   pe.trace_to_jaxpr_dynamic(flat_fun, in_avals)
   metadata = aux()
@@ -853,12 +854,12 @@ def _reap_scan_rule(trace: HarvestTrace, *vals, length, reverse, jaxpr,
   const_vals, carry_vals, xs_vals = jax_util.split_list(
       vals, [num_consts, num_carry])
   _, carry_avals, xs_avals = tree_util.tree_map(
-      lambda x: jax_core.get_aval(x), (const_vals, carry_vals, xs_vals))  # pylint: disable=unnecessary-lambda
+      lambda x: jax.typeof(x), (const_vals, carry_vals, xs_vals))  # pylint: disable=unnecessary-lambda
   settings = trace.context.settings
   with jax_core.set_current_trace(trace.parent_trace):
-    x_vals = [t[0] if hasattr(jax_core.get_aval(t), '_getitem') else t
+    x_vals = [t[0] if hasattr(jax.typeof(t), '_getitem') else t
               for t in xs_vals]
-  x_avals = [jax_core.get_aval(t) for t in x_vals]
+  x_avals = [jax.typeof(t) for t in x_vals]
   metadata = _get_harvest_metadata(jaxpr, settings,
                                    *(const_vals + carry_vals + x_vals))
 
@@ -876,7 +877,7 @@ def _reap_scan_rule(trace: HarvestTrace, *vals, length, reverse, jaxpr,
       cond_carry_avals[name] = None
     if mode == 'cond_clobber':
       reap_carry_avals[name] = aval
-      cond_carry_avals[name] = jax_core.get_aval(True)
+      cond_carry_avals[name] = jax.typeof(True)
 
   body_fun = jex.core.jaxpr_as_fun(jaxpr)
 
@@ -951,7 +952,7 @@ def _reap_while_rule(trace: HarvestTrace, *tracers, cond_jaxpr, body_jaxpr,
   """Reaps the body of a while loop to get the reaps of `clobber` sows."""
   cond_const_vals, body_const_vals, init_vals = jax_util.split_list(
       tracers, [cond_nconsts, body_nconsts])
-  _, init_avals = tree_util.tree_map(lambda x: jax_core.get_aval(x),  # pylint: disable=unnecessary-lambda
+  _, init_avals = tree_util.tree_map(lambda x: jax.typeof(x),  # pylint: disable=unnecessary-lambda
                                      (body_const_vals, init_vals))
   settings = trace.context.settings
   body_metadata = _get_harvest_metadata(body_jaxpr, settings,
@@ -967,7 +968,7 @@ def _reap_while_rule(trace: HarvestTrace, *tracers, cond_jaxpr, body_jaxpr,
       )
     reap_avals[k] = meta['aval']
     if mode == 'cond_clobber':
-      cond_avals[k] = jax_core.get_aval(True)
+      cond_avals[k] = jax.typeof(True)
 
   cond_fun = jex.core.jaxpr_as_fun(cond_jaxpr)
   body_fun = jex.core.jaxpr_as_fun(body_jaxpr)
@@ -1038,7 +1039,7 @@ def _reap_cond_rule(trace, *tracers, branches, linear=None, **params):
   """Reaps each path of the `cond`."""
   del params
   index_val, ops_vals = tracers[0], tracers[1:]
-  _, ops_avals = tree_util.tree_map(lambda x: jax_core.get_aval(x),  # pylint: disable=unnecessary-lambda
+  _, ops_avals = tree_util.tree_map(lambda x: jax.typeof(x),  # pylint: disable=unnecessary-lambda
                                     (index_val, ops_vals))
   settings = trace.context.settings
   reap_settings = dict(
@@ -1093,7 +1094,7 @@ def _reap_checkpoint_rule(trace, *invals, jaxpr, policy, prevent_cse,
   reaped_remat_fun = _call_and_reap(remat_fun, **reap_settings)
   reap_jaxpr, consts, out_tree = _initial_style_jaxpr(
       reaped_remat_fun, tree_util.tree_structure(invals),
-      tuple(jax_core.get_aval(t) for t in invals),
+      tuple(jax.typeof(t) for t in invals),
       jaxpr.debug_info.with_unknown_names())
   outvals = ad_checkpoint.remat_p.bind_with_trace(
       trace.parent_trace,
@@ -1168,7 +1169,7 @@ def _reap_pjit_rule(trace, *invals, **params):
   flat_fun, out_tree = api_util.flatten_fun_nokwargs(reaped_pjit_fun, in_tree)
 
   reap_jaxpr, final_consts, out_avals = _oryx_pjit_jaxpr(
-      flat_fun, tuple(jax_core.get_aval(t) for t in invals))
+      flat_fun, tuple(jax.typeof(t) for t in invals))
   in_shardings, donated_invars, in_layouts = _calc_extra_inps(
       len(final_consts), params)
 
@@ -1357,12 +1358,12 @@ def _plant_scan_rule(trace: HarvestTrace, *tracers, length, reverse, jaxpr,
 
   const_vals, carry_vals, xs_vals = jax_util.split_list(
       tracers, [num_consts, num_carry])
-  carry_avals, xs_avals = tree_util.tree_map(lambda x: jax_core.get_aval(x),  # pylint: disable=unnecessary-lambda
+  carry_avals, xs_avals = tree_util.tree_map(lambda x: jax.typeof(x),  # pylint: disable=unnecessary-lambda
                                              (carry_vals, xs_vals))
   settings = trace.context.settings
 
   with jax_core.set_current_trace(trace.parent_trace):
-    x_vals = [t[0] if hasattr(jax_core.get_aval(t), '_getitem') else t
+    x_vals = [t[0] if hasattr(jax.typeof(t), '_getitem') else t
               for t in xs_vals]
   x_avals = [t.aval for t in x_vals]
   metadata = _get_harvest_metadata(jaxpr, settings,
@@ -1439,7 +1440,7 @@ def _plant_while_rule(trace: HarvestTrace, *tracers, cond_jaxpr, body_jaxpr,
   """Injects values into a while loop, overriding values for all iterations."""
   cond_const_vals, body_const_vals, init_vals = jax_util.split_list(
       tracers, [cond_nconsts, body_nconsts])
-  init_avals = tree_util.tree_map(lambda x: jax_core.get_aval(x), init_vals)  # pylint: disable=unnecessary-lambda
+  init_avals = tree_util.tree_map(lambda x: jax.typeof(x), init_vals)  # pylint: disable=unnecessary-lambda
   settings = trace.context.settings
   body_metadata = _get_harvest_metadata(body_jaxpr, settings,
                                         *(body_const_vals + init_vals))
@@ -1485,7 +1486,7 @@ def _plant_cond_rule(trace, *tracers, branches, linear=None, **params):
   """Injects the same values into both branches of a conditional."""
   del params
   index_val, ops_vals = tracers[0], tracers[1:]
-  ops_avals = tree_util.tree_map(lambda x: jax_core.get_aval(x), ops_vals)  # pylint: disable=unnecessary-lambda
+  ops_avals = tree_util.tree_map(lambda x: jax.typeof(x), ops_vals)  # pylint: disable=unnecessary-lambda
   settings = trace.context.settings
   plant_settings = dict(
       tag=settings.tag,
@@ -1539,7 +1540,7 @@ def _plant_checkpoint_rule(trace, *invals, jaxpr, policy, prevent_cse,
       plant(remat_fun, **plant_settings), plants)
   plant_jaxpr, consts, _ = _initial_style_jaxpr(
       planted_remat_fun, tree_util.tree_structure(invals),
-      tuple(jax_core.get_aval(t) for t in invals),
+      tuple(jax.typeof(t) for t in invals),
       jaxpr.debug_info)
   return ad_checkpoint.remat_p.bind_with_trace(
       trace.parent_trace,
@@ -1588,7 +1589,7 @@ def _plant_pjit_rule(trace, *invals, **params):
   flat_fun, _ = api_util.flatten_fun_nokwargs(planted_pjit_fun, in_tree)
 
   planted_jaxpr, final_consts, out_avals = _oryx_pjit_jaxpr(
-      flat_fun, tuple(jax_core.get_aval(t) for t in invals))
+      flat_fun, tuple(jax.typeof(t) for t in invals))
   in_shardings, donated_invars, in_layouts = _calc_extra_inps(
       len(final_consts), params)
 
