@@ -159,6 +159,7 @@ from jax._src import util as jax_util
 from jax._src.interpreters import ad
 from jax._src.interpreters import partial_eval as pe
 from jax._src.lax import control_flow as lcf
+from jax._src.tree_util import FlatTree
 import jax.extend as jex
 import jax.extend.linear_util as lu
 from jax.interpreters import batching
@@ -830,9 +831,10 @@ def _initial_style_jaxpr(
     in_avals: list[jax_core.AbstractValue],
     debug_info: jax_core.DebugInfo,
 ) -> tuple[jax_core.ClosedJaxpr, list[Any], tree_util.PyTreeDef]:
-  jaxpr, out_tree = pe.trace_to_jaxpr(fun, in_tree, in_avals, debug_info)
+  in_flat_tree = FlatTree.pack((FlatTree(in_avals, in_tree), {}))
+  jaxpr, out_flat_tree = pe.trace_to_jaxpr(fun, in_flat_tree, debug_info)
   jaxpr_no_constvars, consts = pe.separate_consts(jaxpr)
-  return jaxpr_no_constvars, consts, out_tree
+  return jaxpr_no_constvars, consts, out_flat_tree.tree
 
 
 def _initial_style_jaxprs_with_common_consts(
@@ -840,10 +842,12 @@ def _initial_style_jaxprs_with_common_consts(
     in_tree: tree_util.PyTreeDef,
     in_avals: list[jax_core.AbstractValue | jax_core.AvalQDD],
     debug_infos: list[jax_core.DebugInfo]):
-  jaxprs_, out_trees = zip(*[pe.trace_to_jaxpr(
-      f, in_tree, in_avals, dbg) for f, dbg in zip(funs, debug_infos)])
+  in_flat_tree = FlatTree.pack((FlatTree(in_avals, in_tree), {}))
+  jaxprs_, out_flat_trees = zip(*[pe.trace_to_jaxpr(
+      f, in_flat_tree, dbg) for f, dbg in zip(funs, debug_infos)])
   jaxprs_, all_consts = zip(*[pe.separate_consts(j) for j in jaxprs_])
   jaxprs, consts = lcf._merge_common_consts(jaxprs_, all_consts)  # pylint: disable=protected-access
+  out_trees = [out_flat_tree.tree for out_flat_tree in out_flat_trees]
   return jaxprs, consts, out_trees
 
 
