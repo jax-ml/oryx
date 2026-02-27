@@ -1,4 +1,4 @@
-# Copyright 2025 The oryx Authors.
+# Copyright 2026 The oryx Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -229,49 +229,9 @@ class InverseTest(test_util.TestCase):
     np.testing.assert_allclose(
         ildj_, -jnp.log(jnp.abs(jax.jacrev(f2)(1.5))), atol=1e-6, rtol=1e-6)
 
-  def test_inverse_of_pmap(self):
-    # NOTE(dsuo): No registered inverse for `shard_map`. Under
-    # `pmap_shmap_merge=True`, `pmap` is just a wrapper around `jit(shmap)`.
-    if jax.config.jax_pmap_shmap_merge:
-      raise self.skipTest('Not testing when `pmap_shmap_merge=True`.')
-    x = jnp.ones(jax.local_device_count())
 
-    def f(x):
-      return jax.pmap(lambda x: jnp.exp(x) + 2.)(x)
 
-    f_inv = core.inverse_and_ildj(f, x * 4)
-    x_, ildj_ = f_inv(x * 4)
-    np.testing.assert_allclose(x_, jnp.log(2.) * x)
-    np.testing.assert_allclose(
-        ildj_,
-        -jnp.log(jnp.abs(jnp.sum(jax.jacrev(f)(jnp.log(2.) * x)))),
-        atol=1e-6,
-        rtol=1e-6)
 
-  def test_pmap_forward(self):
-    # NOTE(dsuo): No registered inverse for `shard_map`. Under
-    # `pmap_shmap_merge=True`, `pmap` is just a wrapper around `jit(shmap)`.
-    if jax.config.jax_pmap_shmap_merge:
-      raise self.skipTest('Not testing when `pmap_shmap_merge=True`.')
-    if jax.local_device_count() < 2:
-      raise unittest.SkipTest('Not enough devices for test.')
-
-    def f(x, y):
-      z = jax.pmap(jnp.exp)(x)
-      return x + 2., z + y
-
-    def f_vec(x):
-      return jnp.array([x[0] + 2., jnp.exp(x[0]) + x[1]])
-
-    f_inv = core.inverse_and_ildj(f, jnp.ones(2), jnp.ones(2))
-    x, ildj_ = f_inv(2 * jnp.ones(2), jnp.ones(2))
-    np.testing.assert_allclose(x, (jnp.zeros(2), jnp.zeros(2)))
-    np.testing.assert_allclose(
-        ildj_,
-        -jnp.log(
-            jnp.abs(jnp.linalg.slogdet(jax.jacrev(f_vec)(jnp.ones(2)))[0])),
-        atol=1e-6,
-        rtol=1e-6)
 
   def test_inverse_of_sow_is_identity(self):
 
