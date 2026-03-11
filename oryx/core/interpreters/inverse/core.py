@@ -350,7 +350,8 @@ def map_ildj(prim, incells, outcells, **params):
         lambda: (0,) * aux().num_leaves,
         closure=('ildj', params['out_axes']))
     del new_params['out_axes']
-  flat_out = prim.bind(f, *flat_vals, **new_params)
+  new_params['subfuns'] = (f,)
+  flat_out = prim.bind(*flat_vals, **new_params)
   out_tree = aux()
   new_incells, new_outcells, state = tree_util.tree_unflatten(
       out_tree, flat_out)

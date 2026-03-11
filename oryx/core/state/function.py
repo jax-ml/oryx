@@ -115,20 +115,20 @@ def eval_jaxpr_with_kwargs(jaxpr: jex.core.Jaxpr, consts: Iterable[Any], *args,
     in_vals = safe_map(read, eqn.invars)
     subjaxpr, params = trace_util.extract_call_jaxpr(eqn.primitive, eqn.params)
     if subjaxpr:
-      subfuns = [
+      subfuns = (
           lu.wrap_init(
               functools.partial(eval_jaxpr_with_kwargs, subjaxpr, (), **kwargs),
-              debug_info=subjaxpr.jaxpr.debug_info)
-      ]
+              debug_info=subjaxpr.jaxpr.debug_info),
+      )
+      params['subfuns'] = subfuns
     else:
-      subfuns = []
       params = dict(eqn.params)
     if eqn.primitive in kwargs_rules:
       new_kwargs = dict(params.pop('kwargs', {}), **kwargs)
       ans = kwargs_rules[eqn.primitive](
-          *(subfuns + in_vals), kwargs=new_kwargs, **params)
+          *in_vals, kwargs=new_kwargs, **params)
     else:
-      ans = eqn.primitive.bind(*(subfuns + in_vals), **params)
+      ans = eqn.primitive.bind(*in_vals, **params)
     if eqn.primitive.multiple_results:
       safe_map(write, eqn.outvars, ans)
     else:

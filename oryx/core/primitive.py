@@ -175,8 +175,8 @@ def call_bind(prim, **params):
       flat_fun, out_tree = api_util.flatten_fun(fun, in_tree)
       out_tree_dest = None
       out = prim.bind(
-          flat_fun,
           *flat_args,
+          subfuns=(flat_fun,),
           num_args=len(flat_args),
           name=f.__name__,
           in_tree=in_tree,
@@ -203,6 +203,7 @@ def initial_style_bind(prim, **params):
       flat_args = tree_util.tree_leaves(args)
       outs = prim.bind(
           *it.chain(jaxpr.literals, flat_args),
+          subfuns=(f,),
           jaxpr=jaxpr.jaxpr,
           in_tree=in_tree,
           out_tree=out_tree,

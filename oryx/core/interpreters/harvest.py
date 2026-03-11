@@ -326,8 +326,8 @@ def _nest_lowering(ctx, *args, name, call_jaxpr, scope, **_):
 mlir.register_lowering(nest_p, _nest_lowering)
 
 
-def _nest_transpose_rule(*args, **kwargs):
-  return ad.call_transpose(nest_p, *args, **kwargs)
+def _nest_transpose_rule(params, call_jaxpr, args, ct, _):
+  return ad.call_transpose(nest_p, params, call_jaxpr, args, ct, _)
 
 
 ad.primitive_transposes[nest_p] = _nest_transpose_rule
@@ -371,8 +371,8 @@ def nest(f, *, scope: str):
     flat_args, in_tree = tree_util.tree_flatten(args)
     flat_fun, out_tree = api_util.flatten_fun_nokwargs(fun, in_tree)
     out_flat = nest_p.bind(
-        flat_fun,
         *flat_args,
+        subfuns=(flat_fun,),
         scope=scope,
         name=getattr(f, '__name__', '<no name>'))
     return tree_util.tree_unflatten(out_tree(), out_flat)
@@ -428,7 +428,8 @@ class HarvestTrace(jax_core.Trace):
         self, primitive, fun, jvp, vals, symbolic_zeros=symbolic_zeros)
 
   def process_shard_map(self, primitive, f, vals, **params):
-    return primitive.bind_with_trace(self.parent_trace, (f, *vals), params)
+    params['subfuns'] = (f,)
+    return primitive.bind_with_trace(self.parent_trace, vals, params)
 
   def process_custom_vjp_call(self, primitive, fun, fwd, bwd, vals,
                               out_trees, symbolic_zeros):
@@ -550,7 +551,7 @@ class ReapContext(HarvestContext):
 
       params = dict(params, out_axes_thunk=new_out_axes_thunk)
     out_flat = call_primitive.bind_with_trace(
-        trace.parent_trace, (f, *vals), dict(params, name=name))
+        trace.parent_trace, vals, dict(params, name=name, subfuns=(f,)))
     out_tree, metadata = aux()
     out_vals, reaps, preds = tree_util.tree_unflatten(out_tree, out_flat)
     return out_vals, reaps, preds, metadata
@@ -595,8 +596,8 @@ class ReapContext(HarvestContext):
 
     jvp, aux2 = _jvp_subtrace(jvp, self)
     out_flat = primitive.bind_with_trace(
-        trace.parent_trace, (fun, jvp, *vals),
-        dict(symbolic_zeros=symbolic_zeros))
+        trace.parent_trace, vals,
+        dict(symbolic_zeros=symbolic_zeros, subfuns=(fun, jvp)))
     fst, (out_tree, metadata) = lu.merge_linear_aux(aux1, aux2)
     if fst:
       out, reaps, preds = tree_util.tree_unflatten(out_tree, out_flat)
@@ -626,8 +627,9 @@ class ReapContext(HarvestContext):
     bwd_ = reap_function(bwd, self.settings, True)
     bwd = reap_wrapper_drop_aux(bwd_)
     out_flat = primitive.bind_with_trace(
-        trace.parent_trace, (fun, fwd, bwd, *vals),
-        dict(out_trees=out_trees, symbolic_zeros=symbolic_zeros))
+        trace.parent_trace, vals,
+        dict(out_trees=out_trees, symbolic_zeros=symbolic_zeros,
+             subfuns=(fun, fwd, bwd)))
     fst, (out_tree, metadata) = lu.merge_linear_aux(aux1, aux2)
     if fst:
       out, reaps, preds = tree_util.tree_unflatten(out_tree, out_flat)
@@ -1251,7 +1253,7 @@ class PlantContext(HarvestContext):
     all_vals, all_tree = tree_util.tree_flatten((plants, vals))
     f = plant_eval(f, self.settings, all_tree)
     return call_primitive.bind_with_trace(
-        trace.parent_trace, (f, *all_vals), dict(name=name, **params))
+        trace.parent_trace, all_vals, dict(name=name, subfuns=(f,), **params))
 
   def process_custom_jvp_call(self, trace, primitive, fun, jvp, vals, *,
                               symbolic_zeros):
@@ -1259,8 +1261,8 @@ class PlantContext(HarvestContext):
     jvp = _subtrace(jvp, trace.context)
     out_flat = primitive.bind_with_trace(
         trace.parent_trace,
-        (fun, jvp) + tuple(vals),
-        dict(symbolic_zeros=symbolic_zeros))
+        vals,
+        dict(symbolic_zeros=symbolic_zeros, subfuns=(fun, jvp)))
     return out_flat
 
   def process_custom_vjp_call(self, trace, primitive, fun, fwd, bwd, vals,
@@ -1270,8 +1272,9 @@ class PlantContext(HarvestContext):
     # We don't need to subtrace the `bwd` since it's triggered in another trace.
     out_flat = primitive.bind_with_trace(
         trace.parent_trace,
-        (fun, fwd, bwd) + tuple(vals),
-        dict(out_trees=out_trees, symbolic_zeros=symbolic_zeros))
+        vals,
+        dict(out_trees=out_trees, symbolic_zeros=symbolic_zeros,
+             subfuns=(fun, fwd, bwd)))
     return out_flat
 
 

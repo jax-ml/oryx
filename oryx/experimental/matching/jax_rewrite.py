@@ -683,7 +683,9 @@ class CallPrimitive(JaxExpression):
             'oryx.CallPrimitive.evaluate', f, operands, {}
         ),
     )
-    return self.primitive.bind(fun, *operands, **self.params)  # pylint: disable=not-an-iterable
+    new_params = dict(self.params)
+    new_params['subfuns'] = (fun,)
+    return self.primitive.bind(*operands, **new_params)  # pylint: disable=not-an-iterable
 
   def __str__(self):
     return f'({self.primitive} {self.expression} {self.operands})'

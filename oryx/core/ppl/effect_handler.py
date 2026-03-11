@@ -247,7 +247,8 @@ def default_call_interpreter_rule(primitive: jax_core.CallPrimitive,
 
   state_invals, state_invals_tree = tree_util.tree_flatten((state, *invals))
   flat_fun, out_tree = api_util.flatten_fun_nokwargs(fun, state_invals_tree)
-  ans_state = primitive.bind(flat_fun, *state_invals, **params)
+  params['subfuns'] = (flat_fun,)
+  ans_state = primitive.bind(*state_invals, **params)
   return tree_util.tree_unflatten(out_tree(), ans_state)
 
 

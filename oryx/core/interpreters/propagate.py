@@ -354,7 +354,8 @@ def call_rule(prim, incells, outcells, **params):
   if 'donated_invars' in params:
     new_params['donated_invars'] = (False,) * len(flat_vals)
   f, aux = flat_propagate(f, in_tree)
-  flat_out = prim.bind(f, *flat_vals, **new_params)
+  new_params['subfuns'] = (f,)
+  flat_out = prim.bind(*flat_vals, **new_params)
   out_tree = aux()
   return tree_util.tree_unflatten(out_tree, flat_out)
 

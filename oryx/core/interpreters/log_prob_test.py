@@ -74,7 +74,7 @@ def call(f):
     fun = lu.wrap_init(f, kwargs)
     flat_args, in_tree = jax.tree_util.tree_flatten(args)
     flat_fun, out_tree = api_util.flatten_fun_nokwargs(fun, in_tree)
-    ans = primitives.call_p.bind(flat_fun, *flat_args)
+    ans = primitives.call_p.bind(*flat_args, subfuns=(flat_fun,))
     return jax.tree_util.tree_unflatten(out_tree(), ans)
 
   return wrapped
