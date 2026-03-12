@@ -300,7 +300,7 @@ def _sow(trace, value, *, tag, name, mode, key=None, pred=None):
     value = value, pred
   flat_args, in_tree = tree_util.tree_flatten(value)
   out_flat = sow_p.bind_with_trace(
-      trace, flat_args,
+      trace, flat_args, [jax.typeof(x) for x in flat_args],
       dict(name=name, tag=tag, mode=mode, tree=in_tree))
   return tree_util.tree_unflatten(in_tree, out_flat)
 
@@ -402,7 +402,8 @@ class HarvestTrace(jax_core.Trace):
     if primitive is sow_p:
       with jax_core.set_current_trace(self.parent_trace):
         return self.context.process_sow(*vals, **params)
-    outvals = primitive.bind_with_trace(self.parent_trace, vals, params)
+    outvals = primitive.bind_with_trace(self.parent_trace, vals,
+                                        [jax.typeof(v) for v in vals], params)
     if not primitive.multiple_results:
       outvals = [outvals]
     if primitive.multiple_results:
@@ -429,7 +430,8 @@ class HarvestTrace(jax_core.Trace):
 
   def process_shard_map(self, primitive, f, vals, **params):
     params['subfuns'] = (f,)
-    return primitive.bind_with_trace(self.parent_trace, vals, params)
+    return primitive.bind_with_trace(self.parent_trace, vals,
+                                     [jax.typeof(v) for v in vals], params)
 
   def process_custom_vjp_call(self, primitive, fun, fwd, bwd, vals,
                               out_trees, symbolic_zeros):
@@ -551,7 +553,8 @@ class ReapContext(HarvestContext):
 
       params = dict(params, out_axes_thunk=new_out_axes_thunk)
     out_flat = call_primitive.bind_with_trace(
-        trace.parent_trace, vals, dict(params, name=name, subfuns=(f,)))
+        trace.parent_trace, vals, [jax.typeof(v) for v in vals],
+        dict(params, name=name, subfuns=(f,)))
     out_tree, metadata = aux()
     out_vals, reaps, preds = tree_util.tree_unflatten(out_tree, out_flat)
     return out_vals, reaps, preds, metadata
@@ -596,7 +599,7 @@ class ReapContext(HarvestContext):
 
     jvp, aux2 = _jvp_subtrace(jvp, self)
     out_flat = primitive.bind_with_trace(
-        trace.parent_trace, vals,
+        trace.parent_trace, vals, [jax.typeof(v) for v in vals],
         dict(symbolic_zeros=symbolic_zeros, subfuns=(fun, jvp)))
     fst, (out_tree, metadata) = lu.merge_linear_aux(aux1, aux2)
     if fst:
@@ -627,7 +630,7 @@ class ReapContext(HarvestContext):
     bwd_ = reap_function(bwd, self.settings, True)
     bwd = reap_wrapper_drop_aux(bwd_)
     out_flat = primitive.bind_with_trace(
-        trace.parent_trace, vals,
+        trace.parent_trace, vals, [jax.typeof(v) for v in vals],
         dict(out_trees=out_trees, symbolic_zeros=symbolic_zeros,
              subfuns=(fun, fwd, bwd)))
     fst, (out_tree, metadata) = lu.merge_linear_aux(aux1, aux2)
@@ -927,9 +930,10 @@ def _reap_scan_rule(trace: HarvestTrace, *vals, length, reverse, jaxpr,
       linear[:len(consts) + len(carry_vals)] +
       (False,) * len(dummy_reap_carry_vals) +
       linear[len(linear) - len(xs_vals):])
+  vals = (consts + carry_vals + dummy_reap_carry_vals + xs_vals)
   out = lax.scan_p.bind_with_trace(
       trace.parent_trace,
-      (consts + carry_vals + dummy_reap_carry_vals + xs_vals),
+      vals, [jax.typeof(v) for v in vals],
       dict(reverse=reverse,
            length=length,
            jaxpr=new_body_jaxpr,
@@ -1008,9 +1012,10 @@ def _reap_while_rule(trace: HarvestTrace, *tracers, cond_jaxpr, body_jaxpr,
   dummy_reap_vals = tree_util.tree_map(lambda x: jnp.zeros(x.shape, x.dtype),
                                        (reap_avals, cond_avals))
   new_in_vals = tree_util.tree_leaves((init_vals, dummy_reap_vals))
+  vals = (cond_consts + body_consts + new_in_vals)
   out = lax.while_p.bind_with_trace(
       trace.parent_trace,
-      (cond_consts + body_consts + new_in_vals),
+      vals, [jax.typeof(v) for v in vals],
       dict(cond_nconsts=len(cond_consts),
            body_nconsts=len(body_consts),
            cond_jaxpr=new_cond_jaxpr,
@@ -1064,15 +1069,16 @@ def _reap_cond_rule(trace, *tracers, branches, linear=None, **params):
   new_branch_jaxprs, consts, out_trees = (
       _initial_style_jaxprs_with_common_consts(
           reaped_branches, in_tree, ops_avals, dbgs))
+  all_vals = (index_val, *consts, *ops_vals)
   if linear is None:
     out = lax.cond_p.bind_with_trace(
         trace.parent_trace,
-        (index_val, *consts, *ops_vals),
+        all_vals, [jax.typeof(v) for v in all_vals],
         dict(branches=tuple(new_branch_jaxprs)))
   else:
     out = lax.cond_p.bind_with_trace(
         trace.parent_trace,
-        (index_val, *consts, *ops_vals),
+        all_vals, [jax.typeof(v) for v in all_vals],
         dict(branches=tuple(new_branch_jaxprs),
              linear=(False,) * len(tuple(consts) + linear)))
   out, reaps, preds = tree_util.tree_unflatten(out_trees[0], out)
@@ -1102,9 +1108,10 @@ def _reap_checkpoint_rule(trace, *invals, jaxpr, policy, prevent_cse,
       reaped_remat_fun, tree_util.tree_structure(invals),
       tuple(jax.typeof(t) for t in invals),
       jaxpr.debug_info.with_unknown_names())
+  all_vals = (*consts, *invals)
   outvals = ad_checkpoint.remat_p.bind_with_trace(
       trace.parent_trace,
-      (*consts, *invals),
+      all_vals, [jax.typeof(v) for v in all_vals],
       dict(jaxpr=reap_jaxpr.jaxpr,
            policy=policy,
            prevent_cse=prevent_cse,
@@ -1188,8 +1195,10 @@ def _reap_pjit_rule(trace, *invals, **params):
       'in_layouts': in_layouts,
       'out_layouts': (None,) * len(out_avals)
   }
+  all_vals = (*final_consts, *invals)
   outvals = jex.core.primitives.jit_p.bind_with_trace(
-      trace.parent_trace, (*final_consts, *invals), new_params)
+      trace.parent_trace, all_vals,
+      [jax.typeof(v) for v in all_vals], new_params)
 
   out, reaps, preds = tree_util.tree_unflatten(out_tree(), outvals)
   for k, v in reaps.items():
@@ -1253,15 +1262,15 @@ class PlantContext(HarvestContext):
     all_vals, all_tree = tree_util.tree_flatten((plants, vals))
     f = plant_eval(f, self.settings, all_tree)
     return call_primitive.bind_with_trace(
-        trace.parent_trace, all_vals, dict(name=name, subfuns=(f,), **params))
+        trace.parent_trace, all_vals, [jax.typeof(v) for v in all_vals],
+        dict(name=name, subfuns=(f,), **params))
 
   def process_custom_jvp_call(self, trace, primitive, fun, jvp, vals, *,
                               symbolic_zeros):
     fun = _subtrace(fun, trace.context)
     jvp = _subtrace(jvp, trace.context)
     out_flat = primitive.bind_with_trace(
-        trace.parent_trace,
-        vals,
+        trace.parent_trace, vals, [jax.typeof(v) for v in vals],
         dict(symbolic_zeros=symbolic_zeros, subfuns=(fun, jvp)))
     return out_flat
 
@@ -1271,8 +1280,7 @@ class PlantContext(HarvestContext):
     fwd = _subtrace(fwd, trace.context)
     # We don't need to subtrace the `bwd` since it's triggered in another trace.
     out_flat = primitive.bind_with_trace(
-        trace.parent_trace,
-        vals,
+        trace.parent_trace, vals, [jax.typeof(v) for v in vals],
         dict(out_trees=out_trees, symbolic_zeros=symbolic_zeros,
              subfuns=(fun, fwd, bwd)))
     return out_flat
@@ -1425,9 +1433,10 @@ def _plant_scan_rule(trace: HarvestTrace, *tracers, length, reverse, jaxpr,
   new_linear = (
       linear[:len(consts) + len(carry_vals) + len(xs_vals)] +
       (False,) * len(plant_vals))
+  all_vals = (consts + carry_vals + xs_vals + plant_vals)
   out = lcf.scan_p.bind_with_trace(
       trace.parent_trace,
-      (consts + carry_vals + xs_vals + plant_vals),
+      all_vals, [jax.typeof(v) for v in all_vals],
       dict(reverse=reverse,
            length=length,
            jaxpr=new_body_jaxpr,
@@ -1476,9 +1485,10 @@ def _plant_while_rule(trace: HarvestTrace, *tracers, cond_jaxpr, body_jaxpr,
   new_body_jaxpr, new_body_consts, _ = _initial_style_jaxpr(
       new_body, in_tree, tuple(init_avals),
       body_jaxpr.jaxpr.debug_info)
+  all_vals = (cond_const_vals + new_body_consts + init_vals)
   out = lcf.while_p.bind_with_trace(
       trace.parent_trace,
-      (cond_const_vals + new_body_consts + init_vals),
+      all_vals, [jax.typeof(v) for v in all_vals],
       dict(cond_nconsts=len(cond_const_vals),
            body_nconsts=len(new_body_consts),
            cond_jaxpr=cond_jaxpr,
@@ -1514,15 +1524,16 @@ def _plant_cond_rule(trace, *tracers, branches, linear=None, **params):
   new_branch_jaxprs, consts, _ = (
       _initial_style_jaxprs_with_common_consts(
           planted_branches, in_tree, ops_avals, dbgs))
+  all_vals = (index_val, *consts, *ops_vals)
   if linear is None:
     out = lax.cond_p.bind_with_trace(
         trace.parent_trace,
-        (index_val, *consts, *ops_vals),
+        all_vals, [jax.typeof(v) for v in all_vals],
         dict(branches=tuple(new_branch_jaxprs)))
   else:
     out = lax.cond_p.bind_with_trace(
         trace.parent_trace,
-        (index_val, *consts, *ops_vals),
+        all_vals, [jax.typeof(v) for v in all_vals],
         dict(branches=tuple(new_branch_jaxprs),
              linear=(False,) * len(tuple(consts) + linear)))
   return out
@@ -1549,9 +1560,10 @@ def _plant_checkpoint_rule(trace, *invals, jaxpr, policy, prevent_cse,
       planted_remat_fun, tree_util.tree_structure(invals),
       tuple(jax.typeof(t) for t in invals),
       jaxpr.debug_info)
+  all_vals = (*consts, *invals)
   return ad_checkpoint.remat_p.bind_with_trace(
       trace.parent_trace,
-      (*consts, *invals),
+      all_vals, [jax.typeof(v) for v in all_vals],
       dict(jaxpr=plant_jaxpr.jaxpr,
            policy=policy,
            prevent_cse=prevent_cse,
@@ -1609,8 +1621,10 @@ def _plant_pjit_rule(trace, *invals, **params):
       'in_layouts': in_layouts,
       'out_layouts': (None,) * len(out_avals),
   }
+  all_vals = (*final_consts, *invals)
   outvals = jex.core.primitives.jit_p.bind_with_trace(
-      trace.parent_trace, (*final_consts, *invals), new_params)
+      trace.parent_trace, all_vals, [jax.typeof(v) for v in all_vals],
+      new_params)
 
   return outvals
 
