@@ -20,7 +20,6 @@ import jax
 from jax import tree_util
 from jax._src import core as jax_core
 from jax._src import util as jax_util
-from jax.interpreters import pxla
 import jax.numpy as np
 
 from oryx.core import primitive
@@ -310,54 +309,3 @@ def initial_inverse_rule(prim):
 
 
 primitive.register_initial_transformation_rule('inverse', initial_inverse_rule)
-
-
-def map_ildj(prim, incells, outcells, **params):
-  """InverseAndILDJ rule for the map primitives."""
-  f, incells = incells[0], incells[1:]
-
-  def slice_aval(aval):
-    return jax_core.ShapedArray(aval.shape[1:], aval.dtype,
-                                aval.weak_type)
-
-  def add_slice(cell, old_cell):
-    new_slices = [
-        NDSlice(ndslice.value, ndslice.ildj, Slice(0, old_cell.aval.shape[0]),
-                *ndslice.slices) for ndslice in cell.slices
-    ]
-    return InverseAndILDJ(old_cell.aval, new_slices)
-
-  def remove_slice(cell):
-    new_slices = [
-        NDSlice(ndslice.value, ndslice.ildj, *ndslice.slices[1:])
-        for ndslice in cell.slices
-    ]
-    aval = slice_aval(cell.aval)
-    return InverseAndILDJ(aval, new_slices)
-
-  mapped_incells = safe_map(remove_slice, incells)
-  mapped_outcells = safe_map(remove_slice, outcells)
-  flat_vals, in_tree = tree_util.tree_flatten((mapped_incells, mapped_outcells))
-  f, aux = propagate.flat_propagate(f, in_tree)
-  # Assume all invars as mapped
-  new_in_axes = (0,) * len(flat_vals)
-  new_params = dict(params, in_axes=new_in_axes)
-  if 'donated_invars' in params:
-    new_params['donated_invars'] = (False,) * len(flat_vals)
-  if 'out_axes' in params:
-    assert all(out_axis == 0 for out_axis in params['out_axes'])
-    new_params['out_axes_thunk'] = jax_util.HashableFunction(
-        lambda: (0,) * aux().num_leaves,
-        closure=('ildj', params['out_axes']))
-    del new_params['out_axes']
-  new_params['subfuns'] = (f,)
-  flat_out = prim.bind(*flat_vals, **new_params)
-  out_tree = aux()
-  new_incells, new_outcells, state = tree_util.tree_unflatten(
-      out_tree, flat_out)
-  new_incells = [add_slice(v, old_v)
-                 for old_v, v in safe_zip(incells, new_incells)]
-  new_outcells = [add_slice(v, old_v)
-                  for old_v, v in safe_zip(outcells, new_outcells)]
-  return new_incells, new_outcells, state
-ildj_registry[pxla.xla_pmap_p] = functools.partial(map_ildj, pxla.xla_pmap_p)
