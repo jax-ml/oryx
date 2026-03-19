@@ -360,4 +360,3 @@ def map_ildj(prim, incells, outcells, **params):
   new_outcells = [add_slice(v, old_v)
                   for old_v, v in safe_zip(outcells, new_outcells)]
   return new_incells, new_outcells, state
-ildj_registry[pxla.xla_pmap_p] = functools.partial(map_ildj, pxla.xla_pmap_p)
