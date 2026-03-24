@@ -544,7 +544,9 @@ class ReapContext(HarvestContext):
     if is_map:
       out_axes_thunk = params['out_axes_thunk']
 
-      @jax_util.as_hashable_function(closure=('harvest', out_axes_thunk))
+      @functools.partial(
+          jax_util.HashableFunction, closure=('harvest', out_axes_thunk)
+      )
       def new_out_axes_thunk():
         out_axes = out_axes_thunk()
         assert all(out_axis == 0 for out_axis in out_axes)
