@@ -859,7 +859,7 @@ def _initial_style_jaxprs_with_common_consts(
 
 
 def _reap_scan_rule(trace: HarvestTrace, *vals, length, reverse, jaxpr,
-                    num_consts, num_carry, linear, unroll, _split_transpose):
+                    num_consts, num_carry, unroll):
   """Reaps the body of a scan to pull out `clobber` and `append` sows."""
 
   const_vals, carry_vals, xs_vals = jax_util.split_list(
@@ -928,10 +928,6 @@ def _reap_scan_rule(trace: HarvestTrace, *vals, length, reverse, jaxpr,
         lambda x: jnp.zeros(x.shape, x.dtype),
         reap_carry_flat_avals,
     )
-  new_linear = (
-      linear[:len(consts) + len(carry_vals)] +
-      (False,) * len(dummy_reap_carry_vals) +
-      linear[len(linear) - len(xs_vals):])
   vals = (consts + carry_vals + dummy_reap_carry_vals + xs_vals)
   out = lax.scan_p.bind_with_trace(
       trace.parent_trace,
@@ -941,9 +937,7 @@ def _reap_scan_rule(trace: HarvestTrace, *vals, length, reverse, jaxpr,
            jaxpr=new_body_jaxpr,
            num_consts=len(consts),
            num_carry=len(carry_vals + dummy_reap_carry_vals),
-           linear=new_linear,
-           unroll=unroll,
-           _split_transpose=_split_transpose))
+           unroll=unroll))
   (carry_out, carry_reaps, carry_preds), (ys, ys_reaps) = (
       tree_util.tree_unflatten(out_tree, out)
   )
@@ -1370,7 +1364,7 @@ def plant(f,
 
 
 def _plant_scan_rule(trace: HarvestTrace, *tracers, length, reverse, jaxpr,
-                     num_consts, num_carry, linear, unroll, _split_transpose):
+                     num_consts, num_carry, unroll):
   """Injects values into a scan according to their sow mode."""
 
   const_vals, carry_vals, xs_vals = jax_util.split_list(
@@ -1432,9 +1426,6 @@ def _plant_scan_rule(trace: HarvestTrace, *tracers, length, reverse, jaxpr,
       tuple(carry_avals + x_avals + plant_xs_flat_avals),
       jaxpr.jaxpr.debug_info)
   plant_vals = tree_util.tree_leaves(append_plants)
-  new_linear = (
-      linear[:len(consts) + len(carry_vals) + len(xs_vals)] +
-      (False,) * len(plant_vals))
   all_vals = (consts + carry_vals + xs_vals + plant_vals)
   out = lcf.scan_p.bind_with_trace(
       trace.parent_trace,
@@ -1444,9 +1435,7 @@ def _plant_scan_rule(trace: HarvestTrace, *tracers, length, reverse, jaxpr,
            jaxpr=new_body_jaxpr,
            num_consts=len(consts),
            num_carry=num_carry,
-           linear=new_linear,
-           unroll=unroll,
-           _split_transpose=_split_transpose))
+           unroll=unroll))
   return out
 
 
