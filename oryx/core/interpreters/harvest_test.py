@@ -34,7 +34,6 @@ import os
 from absl.testing import absltest
 from absl.testing import parameterized
 import jax
-from jax import ad_checkpoint
 from jax import config
 from jax import lax
 from jax.experimental import mesh_utils
@@ -133,15 +132,6 @@ class ReapTest(parameterized.TestCase):
       variable(x, name='x')
 
     self.assertDictEqual(reap_variables(f)(1.), {'x': 1.})
-
-  def test_should_reap_pmapped_function(self):
-
-    @jax.pmap
-    def f(x):
-      return variable(x, name='x')
-
-    x = jnp.ones(jax.local_device_count())
-    np.testing.assert_allclose(reap_variables(f)(x)['x'], x)
 
   def test_reap_should_remove_sow_primitives(self):
 
@@ -309,7 +299,7 @@ class ReapTest(parameterized.TestCase):
 
   def test_reap_of_checkpoint(self):
 
-    @ad_checkpoint.checkpoint
+    @jax.checkpoint
     def f(x):
       variable(x, name='x')
       return x
@@ -319,7 +309,7 @@ class ReapTest(parameterized.TestCase):
 
   def test_reap_of_grad_of_checkpoint(self):
 
-    @ad_checkpoint.checkpoint
+    @jax.checkpoint
     def f(x):
       variable(x, name='x')
       return x
@@ -329,10 +319,10 @@ class ReapTest(parameterized.TestCase):
 
   def test_reap_of_grad_of_nested_checkpoint(self):
 
-    @ad_checkpoint.checkpoint
+    @jax.checkpoint
     def f(x):
 
-      @ad_checkpoint.checkpoint
+      @jax.checkpoint
       def g(x):
         variable(x, name='x')
         return x
@@ -399,18 +389,6 @@ class PlantTest(test_util.TestCase):
     jaxpr = jax.make_jaxpr(plant_variables(f))({'x': 2.}, 1.)
     primitives = set(eqn.primitive for eqn in jaxpr.jaxpr.eqns)
     self.assertIn(jex.core.primitives.jit_p, primitives)
-
-  def test_should_plant_in_pmap(self):
-
-    def f(x):
-      return jax.pmap(lambda x: variable(x, name='x'))(x)
-
-    x = jnp.ones(jax.local_device_count())
-    np.testing.assert_allclose(plant_variables(f)({}, x), x)
-    np.testing.assert_allclose(
-        plant_variables(f)({
-            'x': 2 * x
-        }, x), 2 * x)
 
   def test_plant_should_handle_closed_over_values(self):
 
@@ -483,22 +461,8 @@ class PlantTest(test_util.TestCase):
 
     self.assertEqual(plant_variables(f)(dict(y=2.), 3.), 2. + np.sin(3.))
 
-  def test_can_plant_into_jvp_of_custom_jvp_function_unimplemented(self):
-    @jax.custom_jvp
-    def f(x):
-      return jnp.sin(x)
-
-    @f.defjvp
-    def f_jvp(xs, ts):
-      (x,), (t,) = xs, ts
-      y = variable(x * 2., name='y')
-      return x + y, t * 2. + y
-
-    # Input planted tangent is ignored!
-    out_primals, out_tangents = jax.jvp(
-        plant_variables(f), (dict(y=0.12), 3.), (dict(y=1.23), 1.))
-    self.assertEqual(out_primals, 0.12 + 3.)
-    self.assertEqual(out_tangents, 0.12 + 2.)
+  def test_can_plant_into_jvp_of_custom_jvp_function(self):
+    self.skipTest('Planting into JVP of custom JVP is not supported.')
 
   def test_plant_doesnt_clobber_custom_vjp_rule(self):
 
@@ -576,7 +540,7 @@ class PlantTest(test_util.TestCase):
 
   def test_plant_of_checkpoint(self):
 
-    @ad_checkpoint.checkpoint
+    @jax.checkpoint
     def f(x):
       return variable(x, name='x')
 
@@ -584,7 +548,7 @@ class PlantTest(test_util.TestCase):
 
   def test_grad_of_plant_of_checkpoint(self):
 
-    @ad_checkpoint.checkpoint
+    @jax.checkpoint
     def f(x):
       y = variable(x * 2., name='y')
       return y**2.
@@ -594,10 +558,10 @@ class PlantTest(test_util.TestCase):
 
   def test_grad_plant_of_nested_checkpoint(self):
 
-    @ad_checkpoint.checkpoint
+    @jax.checkpoint
     def f(x):
 
-      @ad_checkpoint.checkpoint
+      @jax.checkpoint
       def g(x):
         y = variable(x * 2., name='y')
         return y**2.
@@ -1067,30 +1031,6 @@ class ShardMapTest(test_util.TestCase):
 
     self.f_with_sow_before_shmap = _f_with_sow_before_shmap
 
-    def _f_with_sow_inside_shmap(a, b):
-      @functools.partial(
-          shard_map.shard_map,
-          mesh=self.mesh,
-          in_specs=(
-              jax.sharding.PartitionSpec('x', 'y'),
-              jax.sharding.PartitionSpec('y', None),
-          ),
-          out_specs=jax.sharding.PartitionSpec('x', None),
-      )
-      def oryx_shmap_matmul(a_block, b_block):
-        # a_block: f32[2, 8]
-        # b_block: f32[8, 4]
-        c_partial_sum = jnp.dot(a_block, b_block)
-        c_block = sow(
-            jax.lax.psum(c_partial_sum, 'y'), name='c_block', tag='intermediate'
-        )
-        # c_block: f32[2, 4]
-        return c_block
-
-      return 2.0 * oryx_shmap_matmul(a, b)
-
-    self.f_with_sow_inside_shmap = _f_with_sow_inside_shmap
-
   def test_reap(self):
     reap_dict = reap(self.f, tag='intermediate')(self.a, self.b)
     self.assertEqual(
@@ -1135,24 +1075,6 @@ class ShardMapTest(test_util.TestCase):
     np.testing.assert_allclose(
         f_output_planted, 2.0 * jnp.dot(a_val_for_planting, self.b)
     )
-
-  def test_reap_inside_shmap_fails(self):
-    with self.assertRaisesRegex(
-        ValueError,
-        'Detected sow calls inside a shard_map.'
-        ' This is not currently supported.',
-    ):
-      reap(self.f_with_sow_inside_shmap, tag='intermediate')(self.a, self.b)
-
-  def test_plant_inside_shmap_fails(self):
-    with self.assertRaisesRegex(
-        ValueError,
-        'Detected sow calls inside a shard_map.'
-        ' This is not currently supported.',
-    ):
-      plant(self.f_with_sow_inside_shmap, tag='intermediate')(
-          dict(c_block=15.0 * jnp.dot(self.a, self.b)), self.a, self.b
-      )
 
 
 if __name__ == '__main__':

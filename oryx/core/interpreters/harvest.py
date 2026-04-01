@@ -298,9 +298,10 @@ def _sow(trace, value, *, tag, name, mode, key=None, pred=None):
   assert (pred is not None) == (mode == 'cond_clobber')
   if pred is not None:
     value = value, pred
-  flat_args, in_tree = tree_util.tree_flatten(value)
+  xs, in_tree = tree_util.tree_flatten(value)
+  xs = [x if isinstance(x, jax.Array) else jnp.asarray(x) for x in xs]
   out_flat = sow_p.bind_with_trace(
-      trace, flat_args, [jax.typeof(x) for x in flat_args],
+      trace, xs, [jax.typeof(x) for x in xs],
       dict(name=name, tag=tag, mode=mode, tree=in_tree))
   return tree_util.tree_unflatten(in_tree, out_flat)
 
@@ -1283,8 +1284,14 @@ class PlantContext(HarvestContext):
 
 
 @contextlib.contextmanager
-def harvest_trace(context: HarvestContext):
-  with jax_core.take_current_trace() as parent_trace:
+def harvest_trace(context: HarvestContext,
+                  parent_trace: jax_core.Trace | None = None):
+  if parent_trace is None:
+    with jax_core.take_current_trace() as parent_trace:
+      trace = HarvestTrace(parent_trace, context)
+      with jax_core.set_current_trace(trace):
+        yield
+  else:
     trace = HarvestTrace(parent_trace, context)
     with jax_core.set_current_trace(trace):
       yield
@@ -1590,18 +1597,23 @@ def _plant_pjit_rule(trace, *invals, **params):
   closed_jaxpr = params['jaxpr']
   plants = trace.context.plants
 
+  flat_plants, plants_tree = tree_util.tree_flatten(plants)
+
   pjit_fun = jex.core.jaxpr_as_fun(closed_jaxpr)
-  planted_pjit_fun = lu.wrap_init(
-      functools.partial(plant(pjit_fun, **plant_settings), plants),
-      debug_info=closed_jaxpr.jaxpr.debug_info,
-  )
-  in_tree = tree_util.tree_structure(invals)
-  flat_fun, _ = api_util.flatten_fun_nokwargs(planted_pjit_fun, in_tree)
+
+  def wrapper(*flat_plants_and_invals):
+    cur_flat_plants = flat_plants_and_invals[: len(flat_plants)]
+    cur_invals = flat_plants_and_invals[len(flat_plants) :]
+    cur_plants = tree_util.tree_unflatten(plants_tree, cur_flat_plants)
+    return plant(pjit_fun, **plant_settings)(cur_plants, *cur_invals)
+
+  flat_fun = lu.wrap_init(wrapper)
+  all_vals = list(flat_plants) + list(invals)
 
   planted_jaxpr, final_consts, out_avals = _oryx_pjit_jaxpr(
-      flat_fun, tuple(jax.typeof(t) for t in invals))
+      flat_fun, tuple(jax.typeof(t) for t in all_vals))
   in_shardings, donated_invars, in_layouts = _calc_extra_inps(
-      len(final_consts), params)
+      len(final_consts) + len(flat_plants), params)
 
   new_params = {
       **params,
@@ -1612,7 +1624,7 @@ def _plant_pjit_rule(trace, *invals, **params):
       'in_layouts': in_layouts,
       'out_layouts': (None,) * len(out_avals),
   }
-  all_vals = (*final_consts, *invals)
+  all_vals = (*final_consts, *all_vals)
   outvals = jex.core.primitives.jit_p.bind_with_trace(
       trace.parent_trace, all_vals, [jax.typeof(v) for v in all_vals],
       new_params)
