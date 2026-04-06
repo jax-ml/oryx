@@ -160,6 +160,7 @@ from jax._src.interpreters import ad
 from jax._src.interpreters import partial_eval as pe
 from jax._src.lax import control_flow as lcf
 from jax._src.tree_util import FlatTree
+from jax._src.tree_util import tracing_registry
 import jax.extend as jex
 import jax.extend.linear_util as lu
 from jax.interpreters import batching
@@ -893,11 +894,11 @@ def _reap_scan_rule(trace: HarvestTrace, *vals, length, reverse, jaxpr,
 
   body_fun = jex.core.jaxpr_as_fun(jaxpr)
 
-  reap_carry_flat_avals = tree_util.tree_leaves(
+  reap_carry_flat_avals, _ = tracing_registry.flatten(
       (reap_carry_avals, cond_carry_avals)
   )
 
-  reap_carry_in_tree = tree_util.tree_structure(
+  _, reap_carry_in_tree = tracing_registry.flatten(
       ((carry_avals, reap_carry_avals, cond_carry_avals), xs_avals))
 
   def new_body(carry, x):
@@ -997,7 +998,7 @@ def _reap_while_rule(trace: HarvestTrace, *tracers, cond_jaxpr, body_jaxpr,
       _update_clobber_carry(carry_reaps, carry_preds, name, val, preds, mode)
     return (carry, carry_reaps, carry_preds)
 
-  new_in_avals, new_in_tree = tree_util.tree_flatten(
+  new_in_avals, new_in_tree = tracing_registry.flatten(
       (init_avals, reap_avals, cond_avals)
   )
   new_cond_jaxpr, cond_consts, _ = _initial_style_jaxpr(
@@ -1062,7 +1063,7 @@ def _reap_cond_rule(trace, *tracers, branches, linear=None, **params):
   dbgs = [branch.jaxpr.debug_info for branch in branches]
   branch_funs = tuple(map(jex.core.jaxpr_as_fun, branches))
   reaped_branches = [_call_and_reap(f, **reap_settings) for f in branch_funs]
-  in_tree = tree_util.tree_structure(ops_avals)
+  _, in_tree = tracing_registry.flatten(ops_avals)
   new_branch_jaxprs, consts, out_trees = (
       _initial_style_jaxprs_with_common_consts(
           reaped_branches, in_tree, ops_avals, dbgs))
@@ -1102,7 +1103,7 @@ def _reap_checkpoint_rule(trace, *invals, jaxpr, policy, prevent_cse,
   remat_fun = jex.core.jaxpr_as_fun(closed_jaxpr)
   reaped_remat_fun = _call_and_reap(remat_fun, **reap_settings)
   reap_jaxpr, consts, out_tree = _initial_style_jaxpr(
-      reaped_remat_fun, tree_util.tree_structure(invals),
+      reaped_remat_fun, tracing_registry.flatten(invals)[1],
       tuple(jax.typeof(t) for t in invals),
       jaxpr.debug_info.with_unknown_names())
   all_vals = (*consts, *invals)
@@ -1175,7 +1176,7 @@ def _reap_pjit_rule(trace, *invals, **params):
       _call_and_reap(pjit_fun, **reap_settings),
       debug_info=closed_jaxpr.jaxpr.debug_info.with_unknown_names(),
   )
-  in_tree = tree_util.tree_structure(invals)
+  _, in_tree = tracing_registry.flatten(invals)
   flat_fun, out_tree = api_util.flatten_fun_nokwargs(reaped_pjit_fun, in_tree)
 
   reap_jaxpr, final_consts, out_avals = _oryx_pjit_jaxpr(
@@ -1410,9 +1411,9 @@ def _plant_scan_rule(trace: HarvestTrace, *tracers, length, reverse, jaxpr,
       if name in plant_modes['append']
   }
 
-  plant_xs_flat_avals, _ = tree_util.tree_flatten(plant_xs_avals)
+  plant_xs_flat_avals, _ = tracing_registry.flatten(plant_xs_avals)
 
-  plant_xs_in_tree = tree_util.tree_structure(
+  _, plant_xs_in_tree = tracing_registry.flatten(
       (carry_avals, (xs_avals, plant_xs_avals)))
 
   def new_body(carry, x):
@@ -1479,7 +1480,7 @@ def _plant_while_rule(trace: HarvestTrace, *tracers, cond_jaxpr, body_jaxpr,
                                               *(tuple(body_const_vals) + carry))
     return carry
 
-  in_tree = tree_util.tree_structure(init_avals)
+  _, in_tree = tracing_registry.flatten(init_avals)
   new_body_jaxpr, new_body_consts, _ = _initial_style_jaxpr(
       new_body, in_tree, tuple(init_avals),
       body_jaxpr.jaxpr.debug_info)
@@ -1518,7 +1519,7 @@ def _plant_cond_rule(trace, *tracers, branches, linear=None, **params):
   planted_branches = [
       functools.partial(plant(f, **plant_settings), plants)
       for f in branch_funs]
-  in_tree = tree_util.tree_structure(ops_avals)
+  _, in_tree = tracing_registry.flatten(ops_avals)
   new_branch_jaxprs, consts, _ = (
       _initial_style_jaxprs_with_common_consts(
           planted_branches, in_tree, ops_avals, dbgs))
@@ -1555,7 +1556,7 @@ def _plant_checkpoint_rule(trace, *invals, jaxpr, policy, prevent_cse,
   planted_remat_fun = functools.partial(
       plant(remat_fun, **plant_settings), plants)
   plant_jaxpr, consts, _ = _initial_style_jaxpr(
-      planted_remat_fun, tree_util.tree_structure(invals),
+      planted_remat_fun, tracing_registry.flatten(invals)[1],
       tuple(jax.typeof(t) for t in invals),
       jaxpr.debug_info)
   all_vals = (*consts, *invals)
