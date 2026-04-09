@@ -238,9 +238,12 @@ def identity_reducer(env, eqn, state, new_state):
 
 @lu.cache
 def _to_jaxpr(flat_fun, in_avals):
-  new_jaxpr, _, consts = pe.trace_to_jaxpr_dynamic(flat_fun, in_avals)
-  new_jaxpr = jex.core.ClosedJaxpr(new_jaxpr, consts)
-  return new_jaxpr
+  from jax._src.tree_util import FlatTree
+
+  closed_jaxpr, _ = pe.trace_to_jaxpr(
+      flat_fun, FlatTree.flatten_args(*in_avals), debug_info=flat_fun.debug_info
+  )
+  return closed_jaxpr
 
 
 def propagate(cell_type: Type[Cell],

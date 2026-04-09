@@ -816,7 +816,9 @@ def _get_harvest_metadata(closed_jaxpr, settings, *args):
   in_avals = jax_util.safe_map(
       lambda a: jax.typeof(a),
       flat_args)
-  pe.trace_to_jaxpr_dynamic(flat_fun, in_avals)
+  pe.trace_to_jaxpr(
+      flat_fun, FlatTree.flatten_args(*in_avals), debug_info=flat_fun.debug_info
+  )
   metadata = aux()
   out_tree()
   return metadata
@@ -1126,7 +1128,11 @@ reap_custom_rules[ad_checkpoint.remat_p] = _reap_checkpoint_rule
 
 @lu.cache
 def _oryx_pjit_jaxpr(flat_fun, in_avals):
-  jaxpr, out_avals, consts = pe.trace_to_jaxpr_dynamic(flat_fun, in_avals)
+  closed_jaxpr, out_avals_tree = pe.trace_to_jaxpr(
+      flat_fun, FlatTree.flatten_args(*in_avals), debug_info=flat_fun.debug_info
+  )
+  jaxpr, consts = closed_jaxpr.jaxpr, closed_jaxpr.consts
+  out_avals = out_avals_tree.tree
   if any(isinstance(c, jax_core.Tracer) for c in consts):
     jaxpr = pe.convert_constvars_jaxpr(jaxpr)
     jaxpr = pe.close_jaxpr(jaxpr)
