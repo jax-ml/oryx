@@ -390,6 +390,9 @@ class HarvestTrace(jax_core.Trace):
     self.parent_trace = parent_trace
     self.context = context
 
+  def stage_value(self, val):
+    return self.parent_trace.stage_value(val)
+
   def process_primitive(
       self, primitive: jex.core.Primitive, vals: List[Any],
       params: Dict[str, Any]) -> Union[Any, List[Any]]:
