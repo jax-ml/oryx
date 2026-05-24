@@ -253,6 +253,25 @@ def convert_element_type_ildj(incells, outcells, *, new_dtype, **params):
 ildj_registry[lax.convert_element_type_p] = convert_element_type_ildj
 
 
+def copy_ildj(incells, outcells, **params):
+  """InverseAndILDJ rule for the ``copy_p`` primitive.
+
+  ``copy`` is an identity operation: it returns its input unchanged. It is
+  therefore its own inverse, and contributes 0 to the log-determinant since it
+  does not change volume. Some JAX trace paths (e.g. under ``jax.jit``) emit
+  ``copy_p``, so without this rule the inverse interpreter raises
+  ``NotImplementedError`` on otherwise-invertible programs.
+  """
+  incell, = incells
+  outcell, = outcells
+  if incell.top() and not outcell.top():
+    outcells = [InverseAndILDJ.new(lax.copy_p.bind(incell.val, **params))]
+  elif outcell.top() and not incell.top():
+    incells = [InverseAndILDJ.new(outcell.val)]
+  return incells, outcells, None
+ildj_registry[lax.copy_p] = copy_ildj
+
+
 # Monkey patching JAX so we can define custom, more numerically stable inverses.
 jax.scipy.special.expit = custom_inverse(jax.scipy.special.expit)
 jax.scipy.special.logit = custom_inverse(jax.scipy.special.logit)
