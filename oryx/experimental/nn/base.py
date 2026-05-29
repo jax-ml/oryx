@@ -407,7 +407,7 @@ not_mapped = NoneProxy()
 def custom_layer_cau_batch(axis_data, vals, dims, *, num_consts, in_tree,
                            out_tree, kwargs, **params):
   """Batching rule for layer_cau primitive to handle custom layers."""
-  if all(dim is batching.not_mapped for dim in dims):
+  if all(dim is None for dim in dims):
     return layer_cau_p.bind(*vals, num_consts=num_consts, in_tree=in_tree,
                             out_tree=out_tree, kwargs=kwargs, **params)
   orig_vals, orig_dims = vals, dims
