@@ -13,12 +13,14 @@
 # limitations under the License.
 
 """Module for higher order primitives."""
+import functools
 import itertools as it
 from typing import Callable
 
 from jax import api_util
 from jax import tree_util
 from jax._src import core as jax_core
+from jax._src import tree_util as tu
 from jax._src import util as jax_util
 from jax._src.interpreters import ad
 from jax._src.interpreters import batching
@@ -136,11 +138,10 @@ class FlatPrimitive(jex.core.Primitive):
 
     def _jvp(primals, tangents, **params):
       primals_out, tangents_out = ad.jvp(
-          lu.wrap_init(self.impl, params,
-                       debug_info=self.debug_info)).call_wrapped(primals,
-                                                                 tangents)
-
-      return primals_out, tangents_out
+          functools.partial(self.impl, **params),
+          tu.FlatTree.flatten_list(primals),
+          tu.FlatTree.flatten_list(tangents))
+      return primals_out.unflatten(), tangents_out.unflatten()
 
     ad.primitive_jvps[self] = _jvp
 
