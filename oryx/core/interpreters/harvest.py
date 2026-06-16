@@ -300,7 +300,8 @@ def _sow(trace, value, *, tag, name, mode, key=None, pred=None):
   if pred is not None:
     value = value, pred
   xs, in_tree = tree_util.tree_flatten(value)
-  xs = [x if isinstance(x, jax.Array) else jnp.asarray(x) for x in xs]
+  with jax_core.set_current_trace(trace):
+    xs = [x if isinstance(x, jax.Array) else jnp.asarray(x) for x in xs]
   out_flat = sow_p.bind_with_trace(
       trace, xs, [jax.typeof(x) for x in xs],
       dict(name=name, tag=tag, mode=mode, tree=in_tree))
