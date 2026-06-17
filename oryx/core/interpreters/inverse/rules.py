@@ -253,6 +253,24 @@ def convert_element_type_ildj(incells, outcells, *, new_dtype, **params):
 ildj_registry[lax.convert_element_type_p] = convert_element_type_ildj
 
 
+def copy_ildj(incells, outcells, **params):
+  """InverseAndILDJ rule for copy primitive.
+  
+  The copy primitive is an identity operation - it just copies a value without
+  transformation. The inverse is also an identity, and the ILDJ is 0 since
+  there's no change in volume.
+  """
+  incell, = incells
+  outcell, = outcells
+  if incell.top() and not outcell.top():
+    # Forward evaluation: copy input to output
+    outcells = [InverseAndILDJ.new(lax.copy_p.bind(incell.val, **params))]
+  elif outcell.top() and not incell.top():
+    # Inverse: copy is its own inverse
+    incells = [InverseAndILDJ.new(outcell.val)]
+  return incells, outcells, None
+ildj_registry[lax.copy_p] = copy_ildj
+
 # Monkey patching JAX so we can define custom, more numerically stable inverses.
 jax.scipy.special.expit = custom_inverse(jax.scipy.special.expit)
 jax.scipy.special.logit = custom_inverse(jax.scipy.special.logit)
