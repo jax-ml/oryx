@@ -1011,8 +1011,9 @@ def _reap_while_rule(trace: HarvestTrace, *tracers, cond_jaxpr, body_jaxpr,
   new_body_jaxpr, body_consts, out_tree = _initial_style_jaxpr(
       new_body, new_in_tree, tuple(new_in_avals),
       body_jaxpr.jaxpr.debug_info)
-  dummy_reap_vals = tree_util.tree_map(lambda x: jnp.zeros(x.shape, x.dtype),
-                                       (reap_avals, cond_avals))
+  with jax_core.set_current_trace(trace):
+    dummy_reap_vals = tree_util.tree_map(lambda x: jnp.zeros(x.shape, x.dtype),
+                                         (reap_avals, cond_avals))
   new_in_vals = tree_util.tree_leaves((init_vals, dummy_reap_vals))
   vals = (cond_consts + body_consts + new_in_vals)
   out = lax.while_p.bind_with_trace(
