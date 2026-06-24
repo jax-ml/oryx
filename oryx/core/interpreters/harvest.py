@@ -154,12 +154,12 @@ from jax import tree_util
 from jax._src import ad_checkpoint
 from jax._src import core as jax_core
 from jax._src import effects
+from jax._src import flattree as ft
 from jax._src import sharding_impls
 from jax._src import util as jax_util
 from jax._src.interpreters import ad
 from jax._src.interpreters import partial_eval as pe
 from jax._src.lax import control_flow as lcf
-from jax._src.tree_util import FlatTree
 from jax._src.tree_util import tracing_registry
 import jax.extend as jex
 import jax.extend.linear_util as lu
@@ -844,7 +844,7 @@ def _initial_style_jaxpr(
     in_avals: list[jax_core.AbstractValue],
     debug_info: jax_core.DebugInfo,
 ) -> tuple[jax_core.ClosedJaxpr, list[Any], tree_util.PyTreeDef]:
-  in_flat_tree = FlatTree.pack((FlatTree(in_avals, in_tree, False), {}))
+  in_flat_tree = ft.pack((ft.FlatTree(in_avals, in_tree, False), {}))
   jaxpr, out_flat_tree = pe.trace_to_jaxpr(fun, in_flat_tree, debug_info)
   jaxpr_no_constvars, consts = pe.separate_consts(jaxpr)
   return jaxpr_no_constvars, consts, out_flat_tree.tree
@@ -855,7 +855,7 @@ def _initial_style_jaxprs_with_common_consts(
     in_tree: tree_util.PyTreeDef,
     in_avals: list[jax_core.AbstractValue | jax_core.AvalQDD],
     debug_infos: list[jax_core.DebugInfo]):
-  in_flat_tree = FlatTree.pack((FlatTree(in_avals, in_tree, False), {}))
+  in_flat_tree = ft.pack((ft.FlatTree(in_avals, in_tree, False), {}))
   jaxprs_, out_flat_trees = zip(*[pe.trace_to_jaxpr(
       f, in_flat_tree, dbg) for f, dbg in zip(funs, debug_infos)])
   jaxprs_, all_consts = zip(*[pe.separate_consts(j) for j in jaxprs_])
