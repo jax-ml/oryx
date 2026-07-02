@@ -102,7 +102,7 @@ register_hop_transformation_rule('transpose', hop_transpose_rule)
 def hop_lowering(prim):
 
   def rule(ctx, *args, backend, name, call_jaxpr, **_params):
-    return mlir._call_lowering(  # pylint: disable=protected-access
+    return mlir._call_lowering(  # pylint: disable=protected-access  # pyrefly: ignore[missing-argument]
         name, name, call_jaxpr, backend,
         ctx.module_context, ctx.avals_in, ctx.avals_out, *args)
 

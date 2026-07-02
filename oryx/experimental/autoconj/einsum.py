@@ -98,7 +98,7 @@ class Einsum(jr.JaxExpression):
     # We can trace the evaluation without incurring any FLOPs.
     operand_shape_dtypes = tuple(
         jax.ShapeDtypeStruct(operand.shape, operand.dtype)
-        for operand in self.operands)
+        for operand in self.operands)  # pyrefly: ignore[not-iterable]
 
     def _eval_fun(*args):
       return jnp.einsum(self.formula, *args)
@@ -127,11 +127,11 @@ class Einsum(jr.JaxExpression):
 
   def tree_map(self, fn) -> 'Einsum':
     """Maps a function across the formula and operands of an `Einsum`."""
-    return Einsum(self.formula, tuple(map(fn, self.operands)))
+    return Einsum(self.formula, tuple(map(fn, self.operands)))  # pyrefly: ignore[bad-argument-type]
 
   def tree_children(self) -> Iterator[Any]:
     """Returns an iterator over the operands of an `Einsum`."""
-    yield from self.operands
+    yield from self.operands  # pyrefly: ignore[invalid-yield]
 
   # JAX rewriting methods
 
@@ -143,7 +143,7 @@ class Einsum(jr.JaxExpression):
   # Builtin methods
 
   def __str__(self) -> str:
-    return f'(einsum[{self.formula}] {" ".join(map(str, self.operands))})'
+    return f'(einsum[{self.formula}] {" ".join(map(str, self.operands))})'  # pyrefly: ignore[bad-argument-type]
 
 
 def split_einsum_formula(formula: str) -> Tuple[List[str], str]:
@@ -199,7 +199,7 @@ def compose_einsums(parent_formula: str, left_args: Tuple[Any, ...],
   """
   parent_in_formulas, parent_out_formula = split_einsum_formula(parent_formula)
   child_formula, child_args = child_einsum.formula, child_einsum.operands
-  child_in_formulas, child_out_formula = split_einsum_formula(child_formula)
+  child_in_formulas, child_out_formula = split_einsum_formula(child_formula)  # pyrefly: ignore[bad-argument-type]
   num_left = len(left_args)
   # Number of output dimensions of child einsum should match number of
   # dimensions in parent einsum.
@@ -233,6 +233,6 @@ def compose_einsums(parent_formula: str, left_args: Tuple[Any, ...],
   new_in_formulas = (
       parent_in_formulas[:num_left] + child_in_formulas +
       parent_in_formulas[num_left:])
-  new_args = left_args + child_args + right_args
+  new_args = left_args + child_args + right_args  # pyrefly: ignore[unsupported-operation]
   new_formula = reconstitute_einsum_formula(new_in_formulas, out_formula)
   return Einsum(new_formula, tuple(new_args))

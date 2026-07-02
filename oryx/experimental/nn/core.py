@@ -44,7 +44,7 @@ class Dense(base.Layer):
   """Dense layer used for building neural networks."""
 
   @classmethod
-  def initialize(cls, rng, in_spec, dim_out,
+  def initialize(cls, rng, in_spec, dim_out,  # pyrefly: ignore[bad-override]
                  kernel_init=stax.glorot(),
                  bias_init=stax.zeros):
     """Initializes Dense Layer.
@@ -67,7 +67,7 @@ class Dense(base.Layer):
         base.create_parameter(k1, (dim_in, dim_out), init=kernel_init),
         base.create_parameter(k2, (dim_out,), init=bias_init)
     )
-    return base.LayerParams(params)
+    return base.LayerParams(params)  # pyrefly: ignore[missing-argument]
 
   @classmethod
   def spec(cls, in_spec, dim_out, **kwargs):
@@ -93,7 +93,7 @@ class Dense(base.Layer):
 
   def __str__(self):
     """String representation of the Layer."""
-    return '{}({})'.format(self.__class__.__name__,
+    return '{}({})'.format(self.__class__.__name__,  # pyrefly: ignore[missing-attribute]
                            self.dim_out)
 
 
@@ -106,9 +106,9 @@ class Dropout(base.Layer):
   """Dropout layer used for building neural networks."""
 
   @classmethod
-  def initialize(cls, rng, in_shape, rate):
+  def initialize(cls, rng, in_shape, rate):  # pyrefly: ignore[bad-override]
     del in_shape
-    layer_params = base.LayerParams(info=DropoutInfo(rate))
+    layer_params = base.LayerParams(info=DropoutInfo(rate))  # pyrefly: ignore[missing-argument]
     return layer_params
 
   @classmethod
@@ -138,7 +138,7 @@ class Activation(base.Layer, metaclass=abc.ABCMeta):
   def initialize(cls, rng, in_shape):
     """Initializes Activation Layer."""
     del in_shape, rng
-    return base.LayerParams()
+    return base.LayerParams()  # pyrefly: ignore[missing-argument]
 
   @classmethod
   def spec(cls, in_spec):

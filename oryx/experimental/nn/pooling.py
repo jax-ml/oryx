@@ -40,7 +40,7 @@ class Pooling(base.Layer, metaclass=abc.ABCMeta):
   """Base class for Pooling layers."""
 
   @classmethod
-  def initialize(cls, rng, in_spec, window_shape,
+  def initialize(cls, rng, in_spec, window_shape,  # pyrefly: ignore[bad-override]
                  strides=None, padding='VALID'):
     """Initializes Pooling layers.
 
@@ -62,7 +62,7 @@ class Pooling(base.Layer, metaclass=abc.ABCMeta):
     dims = (1,) + window_shape + (1,)  # NHWC or NHC
     strides = (1,) + strides + (1,)
     info = PoolingInfo(window_shape, dims, strides, padding)
-    return base.LayerParams(info=info)
+    return base.LayerParams(info=info)  # pyrefly: ignore[missing-argument]
 
   @classmethod
   def spec(cls, in_spec, window_shape,

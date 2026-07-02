@@ -87,12 +87,12 @@ class InverseAndILDJ(Cell):
       return False
     return all(any(s1 < s2 for s2 in other.slices) for s1 in self.slices)
 
-  def __eq__(self, other: 'InverseAndILDJ') -> bool:
+  def __eq__(self, other: 'InverseAndILDJ') -> bool:  # pyrefly: ignore[bad-override]
     if self.aval != other.aval:
       return False
     return self.slices == other.slices
 
-  def join(self, other: 'InverseAndILDJ') -> 'InverseAndILDJ':
+  def join(self, other: 'InverseAndILDJ') -> 'InverseAndILDJ':  # pyrefly: ignore[bad-override]
     if other.top():
       return other
     if other.bottom():
@@ -167,13 +167,13 @@ def inverse_and_ildj(f, *trace_args, reduce_ildj=True):
         for arg in flat_forward_args]
     flat_incells = [InverseAndILDJ.unknown(aval) for aval in flat_forward_avals]
     flat_outcells = safe_map(InverseAndILDJ.new, flat_args)
-    env, _ = propagate.propagate(InverseAndILDJ, ildj_registry, jaxpr.jaxpr,
+    env, _ = propagate.propagate(InverseAndILDJ, ildj_registry, jaxpr.jaxpr,  # pyrefly: ignore[bad-argument-type]
                                  flat_constcells, flat_incells, flat_outcells)  # pytype: disable=wrong-arg-types
     flat_incells = [env.read(invar) for invar in jaxpr.jaxpr.invars]
     if any(not flat_incell.top() for flat_incell in flat_incells):
       raise ValueError('Cannot invert function.')
     flat_vals, flat_ildjs = jax_util.unzip2([
-        (flat_incell.val, flat_incell.ildj) for flat_incell in flat_incells
+        (flat_incell.val, flat_incell.ildj) for flat_incell in flat_incells  # pyrefly: ignore[missing-attribute]
     ])
     vals = tree_util.tree_unflatten(in_tree, flat_vals)
     if reduce_ildj:
@@ -182,7 +182,7 @@ def inverse_and_ildj(f, *trace_args, reduce_ildj=True):
       ildj_ = tree_util.tree_unflatten(in_tree, flat_ildjs)
     if len(forward_args) == 1:
       vals = vals[0]
-      ildj_ = ildj_ if reduce_ildj else ildj_[0]
+      ildj_ = ildj_ if reduce_ildj else ildj_[0]  # pyrefly: ignore[unsupported-operation]
     return vals, ildj_
   return wrapped
 
@@ -297,7 +297,7 @@ primitive.register_hop_transformation_rule('inverse', hop_inverse_rule)
 def initial_ildj(incells, outcells, *, jaxpr, num_consts, **_):
   const_cells, incells = jax_util.split_list(incells, [num_consts])
   env, state = propagate.propagate(
-      InverseAndILDJ, ildj_registry, jaxpr, const_cells,
+      InverseAndILDJ, ildj_registry, jaxpr, const_cells,  # pyrefly: ignore[bad-argument-type]
       incells, outcells)  # pytype: disable=wrong-arg-types
   new_incells = [env.read(invar) for invar in jaxpr.invars]
   new_outcells = [env.read(outvar) for outvar in jaxpr.outvars]

@@ -66,7 +66,7 @@ def bijector_ildj_rule(incells, outcells, *, in_tree, num_consts, direction,
   elif outcell.is_unknown() and not incell.is_unknown():
     new_outcells = [InverseAndILDJ.new(forward_func(incell.val))]
   new_incells = flat_bijector_cells + flat_incells
-  return (const_incells + new_incells, new_outcells, None)
+  return (const_incells + new_incells, new_outcells, None)  # pyrefly: ignore[unbound-name]
 
 inverse_core.ildj_registry[bijector_p] = bijector_ildj_rule
 

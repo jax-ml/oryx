@@ -35,7 +35,7 @@ class Slice:
     return ((self.start > other.start and self.stop <= other.stop)
             or (self.start >= other.start and self.stop < other.stop))
 
-  def __eq__(self, other: 'Slice') -> bool:
+  def __eq__(self, other: 'Slice') -> bool:  # pyrefly: ignore[bad-override]
     return self.start == other.start and self.stop == other.stop
 
   def __repr__(self):
@@ -71,7 +71,7 @@ class NDSlice(pytree.Pytree):
   def ndim(self) -> int:
     return len(self.slices)
 
-  def __eq__(self, other: 'NDSlice') -> bool:
+  def __eq__(self, other: 'NDSlice') -> bool:  # pyrefly: ignore[bad-override]
     # Comparisons should only be for the same logical array, so we only need to
     # compare the slice indices themselves
     return self.slices == other.slices
@@ -173,7 +173,7 @@ class NDSlice(pytree.Pytree):
         new_value = np.concatenate([self.value, other.value], axis=i)
         new_ildj = np.concatenate([self.ildj, other.ildj], axis=i)
         new_slices.append(Slice(s1.start, s2.stop))
-    return NDSlice(new_value, new_ildj, *new_slices)
+    return NDSlice(new_value, new_ildj, *new_slices)  # pyrefly: ignore[unbound-name]
 
   @classmethod
   def new(cls, value, ildj):

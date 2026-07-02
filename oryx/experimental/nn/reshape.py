@@ -40,7 +40,7 @@ class Flatten(base.Layer):
     Returns:
       Tuple with the output shape and the LayerParams.
     """
-    return base.LayerParams(info=in_spec.shape)
+    return base.LayerParams(info=in_spec.shape)  # pyrefly: ignore[missing-argument]
 
   @classmethod
   def spec(cls, in_spec):
@@ -65,7 +65,7 @@ class Reshape(base.Layer):
   """Reshape the inputs to a new compatatible shape."""
 
   @classmethod
-  def initialize(cls, rng, in_spec, dim_out):
+  def initialize(cls, rng, in_spec, dim_out):  # pyrefly: ignore[bad-override]
     """Initializes Reshape Layer.
 
     Args:
@@ -76,7 +76,7 @@ class Reshape(base.Layer):
     Returns:
       Tuple with the output shape and the LayerParams.
     """
-    return base.LayerParams(info=(in_spec.shape, tuple(dim_out)))
+    return base.LayerParams(info=(in_spec.shape, tuple(dim_out)))  # pyrefly: ignore[missing-argument]
 
   @classmethod
   def spec(cls, in_spec, dim_out):

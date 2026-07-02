@@ -274,11 +274,11 @@ class Layer(state.Module, metaclass=abc.ABCMeta):
   def __repr__(self):
     """String representation of the Layer."""
     return '{}(params={}, info={})'.format(
-        self.__class__.__name__, self.params, self.info)
+        self.__class__.__name__, self.params, self.info)  # pyrefly: ignore[missing-attribute]
 
   def __str__(self):
     """String representation of the Layer."""
-    return '{}()'.format(self.__class__.__name__)
+    return '{}()'.format(self.__class__.__name__)  # pyrefly: ignore[missing-attribute]
 
   def flatten(self):
     """Converts the Layer to a tuple suitable for PyTree."""
@@ -429,7 +429,7 @@ def custom_layer_cau_batch(axis_data, vals, dims, *, num_consts, in_tree,
     assert mapping_over_layer or mapping_over_args, (layer_dims, arg_dims)
     if not mapping_over_layer and mapping_over_args:
       if kwargs_dict['has_rng']:
-        if rng_dim is not not_mapped:
+        if rng_dim is not not_mapped:  # pyrefly: ignore[unbound-name]
           arg_dims = tuple(None if dim is not_mapped else dim
                            for dim in arg_dims)
           map_fun = jax.vmap(
@@ -439,7 +439,7 @@ def custom_layer_cau_batch(axis_data, vals, dims, *, num_consts, in_tree,
         else:
           map_fun = lambda layer, *args: _layer_cau_batched(layer, *args,  # pylint: disable=unnecessary-lambda, g-long-lambda
                                                             **kwargs_dict)
-        vals_out, update_out = map_fun(layer, rng, *args)
+        vals_out, update_out = map_fun(layer, rng, *args)  # pyrefly: ignore[unbound-name]
       else:
         vals_out, update_out = _layer_cau_batched(layer, *args,
                                                   **kwargs_dict)

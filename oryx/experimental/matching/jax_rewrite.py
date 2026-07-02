@@ -502,7 +502,7 @@ class Primitive(JaxExpression):
     operands = evaluate(self.operands, env)
     if not isinstance(self.primitive, jex.core.Primitive):
       raise ValueError('Cannot evaluate expression with patterns.')
-    return self.primitive.bind(*operands, **self.params)  # pylint: disable=not-an-iterable
+    return self.primitive.bind(*operands, **self.params)  # pylint: disable=not-an-iterable  # pyrefly: ignore[bad-unpacking]
 
   def __str__(self):
     return f'({self.primitive} {" ".join(map(str, self.operands))})'
@@ -734,7 +734,7 @@ class PjitPrimitive(CallPrimitive):
     )
     in_avals = tuple(api_util.shaped_abstractify(i) for i in operands)  # pylint: disable=not-an-iterable
     new_jaxpr = _to_jaxpr(fun, in_avals)
-    new_params = {**self.params, 'jaxpr': new_jaxpr}
+    new_params = {**self.params, 'jaxpr': new_jaxpr}  # pyrefly: ignore[invalid-argument]
     return jex.core.primitives.jit_p.bind(*operands, **new_params)  # pylint: disable=not-an-iterable
 
 
@@ -787,7 +787,7 @@ def jaxpr_to_expressions(jaxpr: jex.core.Jaxpr) -> Tuple[Expr, ...]:
       jaxpr.invars)
   jax_util.safe_map(write_env, jaxpr.invars, in_patterns)
   for eqn in jaxpr.eqns:
-    operands = tuple(jax_util.safe_map(read_env, eqn.invars))
+    operands = tuple(jax_util.safe_map(read_env, eqn.invars))  # pyrefly: ignore[bad-argument-type]
 
     call_jaxpr, params = trace_util.extract_call_jaxpr(
         eqn.primitive, eqn.params)
@@ -809,7 +809,7 @@ def jaxpr_to_expressions(jaxpr: jex.core.Jaxpr) -> Tuple[Expr, ...]:
       jax_util.safe_map(write_env, eqn.outvars, out_parts)
     else:
       write_env(eqn.outvars[0], out)
-  return tuple(jax_util.safe_map(read_env, jaxpr.outvars))
+  return tuple(jax_util.safe_map(read_env, jaxpr.outvars))  # pyrefly: ignore[bad-argument-type]
 
 
 def make_bound_expression(f: Callable[..., Any]) -> Callable[..., Any]:

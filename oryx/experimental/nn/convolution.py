@@ -73,7 +73,7 @@ class Conv(base.Layer):
   """Neural network layer for 2D convolution."""
 
   @classmethod
-  def initialize(cls, key, in_spec, out_chan, filter_shape,
+  def initialize(cls, key, in_spec, out_chan, filter_shape,  # pyrefly: ignore[bad-override]
                  strides=None, padding='VALID',
                  kernel_init=None, bias_init=stax.randn(1e-6),
                  use_bias=True):
@@ -97,7 +97,7 @@ class Conv(base.Layer):
           base.create_parameter(k1, kernel_shape, init=kernel_init),
           None
       )
-    return base.LayerParams(params, info=info)
+    return base.LayerParams(params, info=info)  # pyrefly: ignore[missing-argument]
 
   @classmethod
   def spec(cls, in_spec, out_chan, filter_shape,
@@ -136,7 +136,7 @@ class Deconv(base.Layer):
   """Neural network layer for 2D transposed convolution."""
 
   @classmethod
-  def initialize(cls, key, in_spec, out_chan, filter_shape,
+  def initialize(cls, key, in_spec, out_chan, filter_shape,  # pyrefly: ignore[bad-override]
                  strides=None, padding='VALID',
                  kernel_init=None, bias_init=stax.randn(1e-6),
                  use_bias=True):
@@ -161,7 +161,7 @@ class Deconv(base.Layer):
           base.create_parameter(k1, kernel_shape, init=kernel_init),
           None
       )
-    return base.LayerParams(params, info=info)
+    return base.LayerParams(params, info=info)  # pyrefly: ignore[missing-argument]
 
   @classmethod
   def spec(cls, in_spec, out_chan, filter_shape,

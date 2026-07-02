@@ -68,7 +68,7 @@ class AddN(jr.JaxExpression):
     """
     operand_shape_dtypes = tuple(
         jax.ShapeDtypeStruct(operand.shape, operand.dtype)
-        for operand in self.operands)
+        for operand in self.operands)  # pyrefly: ignore[not-iterable]
 
     def _eval_fun(*args):
       return functools.reduce(operator.add, args)
@@ -96,11 +96,11 @@ class AddN(jr.JaxExpression):
 
   def tree_map(self, fn) -> 'AddN':
     """Maps a function across the operands of an `AddN`."""
-    return AddN(tuple(map(fn, self.operands)))
+    return AddN(tuple(map(fn, self.operands)))  # pyrefly: ignore[bad-argument-type]
 
   def tree_children(self) -> Iterator[Any]:
     """Returns an iterator over the operands of an `AddN`."""
-    yield from self.operands
+    yield from self.operands  # pyrefly: ignore[invalid-yield]
 
   # JAX rewriting methods
 

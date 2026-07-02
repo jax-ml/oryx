@@ -926,7 +926,7 @@ def _reap_scan_rule(trace: HarvestTrace, *vals, length, reverse, jaxpr,
 
   new_body_jaxpr, consts, out_tree = _initial_style_jaxpr(
       new_body, reap_carry_in_tree,
-      tuple(carry_avals + reap_carry_flat_avals + x_avals),
+      tuple(carry_avals + reap_carry_flat_avals + x_avals),  # pyrefly: ignore[bad-argument-type]
       jaxpr.jaxpr.debug_info.with_unknown_names())
 
   with jax_core.set_current_trace(trace.parent_trace):
@@ -1006,10 +1006,10 @@ def _reap_while_rule(trace: HarvestTrace, *tracers, cond_jaxpr, body_jaxpr,
       (init_avals, reap_avals, cond_avals)
   )
   new_cond_jaxpr, cond_consts, _ = _initial_style_jaxpr(
-      new_cond, new_in_tree, tuple(new_in_avals),
+      new_cond, new_in_tree, tuple(new_in_avals),  # pyrefly: ignore[bad-argument-type]
       cond_jaxpr.jaxpr.debug_info)
   new_body_jaxpr, body_consts, out_tree = _initial_style_jaxpr(
-      new_body, new_in_tree, tuple(new_in_avals),
+      new_body, new_in_tree, tuple(new_in_avals),  # pyrefly: ignore[bad-argument-type]
       body_jaxpr.jaxpr.debug_info)
   with jax_core.set_current_trace(trace):
     dummy_reap_vals = tree_util.tree_map(lambda x: jnp.zeros(x.shape, x.dtype),
@@ -1109,7 +1109,7 @@ def _reap_checkpoint_rule(trace, *invals, jaxpr, policy, prevent_cse,
   reaped_remat_fun = _call_and_reap(remat_fun, **reap_settings)
   reap_jaxpr, consts, out_tree = _initial_style_jaxpr(
       reaped_remat_fun, tracing_registry.flatten(invals)[1],
-      tuple(jax.typeof(t) for t in invals),
+      tuple(jax.typeof(t) for t in invals),  # pyrefly: ignore[bad-argument-type]
       jaxpr.debug_info.with_unknown_names())
   all_vals = (*consts, *invals)
   outvals = ad_checkpoint.remat_p.bind_with_trace(
@@ -1436,7 +1436,7 @@ def _plant_scan_rule(trace: HarvestTrace, *tracers, length, reverse, jaxpr,
 
   new_body_jaxpr, consts, _ = _initial_style_jaxpr(
       new_body, plant_xs_in_tree,
-      tuple(carry_avals + x_avals + plant_xs_flat_avals),
+      tuple(carry_avals + x_avals + plant_xs_flat_avals),  # pyrefly: ignore[bad-argument-type]
       jaxpr.jaxpr.debug_info)
   plant_vals = tree_util.tree_leaves(append_plants)
   all_vals = (consts + carry_vals + xs_vals + plant_vals)
@@ -1487,7 +1487,7 @@ def _plant_while_rule(trace: HarvestTrace, *tracers, cond_jaxpr, body_jaxpr,
 
   _, in_tree = tracing_registry.flatten(init_avals)
   new_body_jaxpr, new_body_consts, _ = _initial_style_jaxpr(
-      new_body, in_tree, tuple(init_avals),
+      new_body, in_tree, tuple(init_avals),  # pyrefly: ignore[bad-argument-type]
       body_jaxpr.jaxpr.debug_info)
   all_vals = (cond_const_vals + new_body_consts + init_vals)
   out = lcf.while_p.bind_with_trace(
@@ -1527,7 +1527,7 @@ def _plant_cond_rule(trace, *tracers, branches, linear=None, **params):
   _, in_tree = tracing_registry.flatten(ops_avals)
   new_branch_jaxprs, consts, _ = (
       _initial_style_jaxprs_with_common_consts(
-          planted_branches, in_tree, ops_avals, dbgs))
+          planted_branches, in_tree, ops_avals, dbgs))  # pyrefly: ignore[bad-argument-type]
   all_vals = (index_val, *consts, *ops_vals)
   if linear is None:
     out = lax.cond_p.bind_with_trace(
@@ -1562,7 +1562,7 @@ def _plant_checkpoint_rule(trace, *invals, jaxpr, policy, prevent_cse,
       plant(remat_fun, **plant_settings), plants)
   plant_jaxpr, consts, _ = _initial_style_jaxpr(
       planted_remat_fun, tracing_registry.flatten(invals)[1],
-      tuple(jax.typeof(t) for t in invals),
+      tuple(jax.typeof(t) for t in invals),  # pyrefly: ignore[bad-argument-type]
       jaxpr.debug_info)
   all_vals = (*consts, *invals)
   return ad_checkpoint.remat_p.bind_with_trace(

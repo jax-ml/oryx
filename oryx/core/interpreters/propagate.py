@@ -320,7 +320,7 @@ def propagate(cell_type: Type[Cell],
     else:
       subfuns = []
       rule = rules[eqn.primitive]
-    new_incells, new_outcells, eqn_state = rule(subfuns + incells, outcells,
+    new_incells, new_outcells, eqn_state = rule(subfuns + incells, outcells,  # pyrefly: ignore[not-callable]
                                                 **params)
     env.write_state(eqn, eqn_state)
 

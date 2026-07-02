@@ -28,7 +28,7 @@ class Serial(base.Layer):
   """Layer that executes a sequence of child layers."""
 
   @classmethod
-  def initialize(cls, init_key, *args):
+  def initialize(cls, init_key, *args):  # pyrefly: ignore[bad-override]
     """Initializes Serial Layer.
 
     Args:
@@ -95,7 +95,7 @@ class Serial(base.Layer):
     layers = tuple(c.unflatten(d, x) for c, x, d in
                    zip(children_cls, xs, children_data))
     layer = object.__new__(cls)
-    layer_params = base.LayerParams(layers)
+    layer_params = base.LayerParams(layers)  # pyrefly: ignore[missing-argument]
     layer.__init__(layer_params, name=name)
     return layer
 

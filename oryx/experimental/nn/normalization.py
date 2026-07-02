@@ -49,7 +49,7 @@ class BatchNorm(base.Layer):
   """Layer for Batch Normalization."""
 
   @classmethod
-  def initialize(cls, key, in_spec, axis=(0, 1), momentum=0.99,
+  def initialize(cls, key, in_spec, axis=(0, 1), momentum=0.99,  # pyrefly: ignore[bad-override]
                  epsilon=1e-5, center=True, scale=True,
                  beta_init=stax.zeros, gamma_init=stax.ones):
     in_shape = in_spec.shape
