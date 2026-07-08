@@ -142,10 +142,11 @@ reap(f, tag='intermediate')(5.)  # ==> {'y': 6.}
 from __future__ import annotations
 
 import collections
+from collections.abc import Hashable
 import contextlib
 import dataclasses
 import functools
-from typing import Any, Callable, Dict, FrozenSet, Hashable, Iterable, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, FrozenSet, Iterable, List, Optional, Tuple, Union
 
 import jax
 from jax import api_util
@@ -817,9 +818,7 @@ def _get_harvest_metadata(closed_jaxpr, settings, *args):
   fun, aux = _reap_metadata_wrapper(fun)
   flat_args, in_tree = tree_util.tree_flatten(args)
   flat_fun, out_tree = api_util.flatten_fun_nokwargs(fun, in_tree)
-  in_avals = jax_util.safe_map(
-      lambda a: jax.typeof(a),
-      flat_args)
+  in_avals = jax_util.safe_map(jax.typeof, flat_args)
   pe.trace_to_jaxpr_dynamic(flat_fun, in_avals)
   metadata = aux()
   out_tree()
@@ -864,9 +863,26 @@ def _initial_style_jaxprs_with_common_consts(
   return jaxprs, consts, out_trees
 
 
-def _reap_scan_rule(trace: HarvestTrace, *vals, length, reverse, jaxpr,
-                    num_consts, num_carry, unroll):
+def _reap_scan_rule(
+    trace: HarvestTrace,
+    *vals,
+    length,
+    reverse,
+    jaxpr,
+    unroll,
+    num_consts=None,
+    num_carry=None,
+    ft_in=None,
+    **unused_kwargs,
+):
   """Reaps the body of a scan to pull out `clobber` and `append` sows."""
+
+  if num_consts is None or num_carry is None:
+    if ft_in is None:
+      raise ValueError('Missing num_consts/num_carry or ft_in')
+    consts_ft, carry_ft, _ = ft_in.unpack()
+    num_consts = len(consts_ft)
+    num_carry = len(carry_ft)
 
   const_vals, carry_vals, xs_vals = jax_util.split_list(
       vals, [num_consts, num_carry])
@@ -935,15 +951,25 @@ def _reap_scan_rule(trace: HarvestTrace, *vals, length, reverse, jaxpr,
         reap_carry_flat_avals,
     )
   vals = (consts + carry_vals + dummy_reap_carry_vals + xs_vals)
+  num_carry_new = len(carry_vals + dummy_reap_carry_vals)
+  num_ys_new = len(new_body_jaxpr.out_avals) - num_carry_new
+  ft_in_new = ft.pack(
+      (ft.nones(len(consts)), ft.nones(num_carry_new), ft.nones(len(xs_vals)))
+  )
+  ft_out_new = ft.pack((ft.nones(num_carry_new), ft.nones(num_ys_new)))
   out = lax.scan_p.bind_with_trace(
       trace.parent_trace,
-      vals, [jax.typeof(v) for v in vals],
-      dict(reverse=reverse,
-           length=length,
-           jaxpr=new_body_jaxpr,
-           num_consts=len(consts),
-           num_carry=len(carry_vals + dummy_reap_carry_vals),
-           unroll=unroll))
+      vals,
+      [jax.typeof(v) for v in vals],
+      dict(
+          reverse=reverse,
+          length=length,
+          jaxpr=new_body_jaxpr,
+          ft_in=ft_in_new,
+          ft_out=ft_out_new,
+          unroll=unroll,
+      ),
+  )
   (carry_out, carry_reaps, carry_preds), (ys, ys_reaps) = (
       tree_util.tree_unflatten(out_tree, out)
   )
@@ -959,8 +985,15 @@ def _reap_scan_rule(trace: HarvestTrace, *vals, length, reverse, jaxpr,
 reap_custom_rules[lcf.scan_p] = _reap_scan_rule
 
 
-def _reap_while_rule(trace: HarvestTrace, *tracers, cond_jaxpr, body_jaxpr,
-                     cond_nconsts, body_nconsts):
+def _reap_while_rule(
+    trace: HarvestTrace,
+    *tracers,
+    cond_jaxpr,
+    body_jaxpr,
+    cond_nconsts,
+    body_nconsts,
+    **unused_kwargs,
+):
   """Reaps the body of a while loop to get the reaps of `clobber` sows."""
   cond_const_vals, body_const_vals, init_vals = jax_util.split_list(
       tracers, [cond_nconsts, body_nconsts])
@@ -1094,8 +1127,9 @@ def _reap_cond_rule(trace, *tracers, branches, linear=None, **params):
 reap_custom_rules[lcf.cond_p] = _reap_cond_rule
 
 
-def _reap_checkpoint_rule(trace, *invals, jaxpr, policy, prevent_cse,
-                          differentiated):
+def _reap_checkpoint_rule(
+    trace, *invals, jaxpr, policy, prevent_cse, differentiated, **unused_kwargs
+):
   """Reap checkpoint rule."""
   settings = trace.context.settings
   reap_settings = dict(
@@ -1154,14 +1188,16 @@ def _calc_extra_inps(num_consts, params):
 def _reap_pjit_rule(trace, *invals, **params):
   """Reap pjit rule."""
   if params['in_shardings'] and not any(
-      isinstance(i, sharding_impls.UnspecifiedValue) for i in params['in_shardings']
+      isinstance(i, sharding_impls.UnspecifiedValue)
+      for i in params['in_shardings']
   ):
     raise ValueError(
         'oryx only supports pjit which has no in_axis_resources '
         f'specified. Got {params["in_shardings"]}'
     )
   if params['out_shardings'] and not any(
-      isinstance(o, sharding_impls.UnspecifiedValue) for o in params['out_shardings']
+      isinstance(o, sharding_impls.UnspecifiedValue)
+      for o in params['out_shardings']
   ):
     raise ValueError(
         'oryx only supports pjit which has no out_axis_resources '
@@ -1376,9 +1412,26 @@ def plant(f,
   return wrapped
 
 
-def _plant_scan_rule(trace: HarvestTrace, *tracers, length, reverse, jaxpr,
-                     num_consts, num_carry, unroll):
+def _plant_scan_rule(
+    trace: HarvestTrace,
+    *tracers,
+    length,
+    reverse,
+    jaxpr,
+    unroll,
+    num_consts=None,
+    num_carry=None,
+    ft_in=None,
+    **unused_kwargs,
+):
   """Injects values into a scan according to their sow mode."""
+
+  if num_consts is None or num_carry is None:
+    if ft_in is None:
+      raise ValueError('Missing num_consts/num_carry or ft_in')
+    consts_ft, carry_ft, _ = ft_in.unpack()
+    num_consts = len(consts_ft)
+    num_carry = len(carry_ft)
 
   const_vals, carry_vals, xs_vals = jax_util.split_list(
       tracers, [num_consts, num_carry])
@@ -1440,23 +1493,41 @@ def _plant_scan_rule(trace: HarvestTrace, *tracers, length, reverse, jaxpr,
       jaxpr.jaxpr.debug_info)
   plant_vals = tree_util.tree_leaves(append_plants)
   all_vals = (consts + carry_vals + xs_vals + plant_vals)
+  num_ys_new = len(new_body_jaxpr.out_avals) - num_carry
+  ft_in_new = ft.pack((
+      ft.nones(len(consts)),
+      ft.nones(num_carry),
+      ft.nones(len(xs_vals) + len(plant_vals)),
+  ))
+  ft_out_new = ft.pack((ft.nones(num_carry), ft.nones(num_ys_new)))
   out = lcf.scan_p.bind_with_trace(
       trace.parent_trace,
-      all_vals, [jax.typeof(v) for v in all_vals],
-      dict(reverse=reverse,
-           length=length,
-           jaxpr=new_body_jaxpr,
-           num_consts=len(consts),
-           num_carry=num_carry,
-           unroll=unroll))
+      all_vals,
+      [jax.typeof(v) for v in all_vals],
+      dict(
+          reverse=reverse,
+          length=length,
+          jaxpr=new_body_jaxpr,
+          ft_in=ft_in_new,
+          ft_out=ft_out_new,
+          unroll=unroll,
+      ),
+  )
   return out
 
 
 plant_custom_rules[lcf.scan_p] = _plant_scan_rule
 
 
-def _plant_while_rule(trace: HarvestTrace, *tracers, cond_jaxpr, body_jaxpr,
-                      cond_nconsts, body_nconsts):
+def _plant_while_rule(
+    trace: HarvestTrace,
+    *tracers,
+    cond_jaxpr,
+    body_jaxpr,
+    cond_nconsts,
+    body_nconsts,
+    **unused_kwargs,
+):
   """Injects values into a while loop, overriding values for all iterations."""
   cond_const_vals, body_const_vals, init_vals = jax_util.split_list(
       tracers, [cond_nconsts, body_nconsts])
@@ -1546,8 +1617,9 @@ def _plant_cond_rule(trace, *tracers, branches, linear=None, **params):
 plant_custom_rules[lcf.cond_p] = _plant_cond_rule
 
 
-def _plant_checkpoint_rule(trace, *invals, jaxpr, policy, prevent_cse,
-                           differentiated):
+def _plant_checkpoint_rule(
+    trace, *invals, jaxpr, policy, prevent_cse, differentiated, **unused_kwargs
+):
   """Plant checkpoint rule."""
   settings = trace.context.settings
   plant_settings = dict(
@@ -1580,14 +1652,16 @@ plant_custom_rules[ad_checkpoint.remat_p] = _plant_checkpoint_rule
 def _plant_pjit_rule(trace, *invals, **params):
   """Plant pjit rule."""
   if params['in_shardings'] and not any(
-      isinstance(i, sharding_impls.UnspecifiedValue) for i in params['in_shardings']
+      isinstance(i, sharding_impls.UnspecifiedValue)
+      for i in params['in_shardings']
   ):
     raise ValueError(
         'oryx only supports pjit which has no in_axis_resources '
         f'specified. Got {params["in_shardings"]}'
     )
   if params['out_shardings'] and not any(
-      isinstance(o, sharding_impls.UnspecifiedValue) for o in params['out_shardings']
+      isinstance(o, sharding_impls.UnspecifiedValue)
+      for o in params['out_shardings']
   ):
     raise ValueError(
         'oryx only supports pjit which has no out_axis_resources '
