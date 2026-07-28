@@ -160,6 +160,7 @@ from jax._src import sharding_impls
 from jax._src import util as jax_util
 from jax._src.interpreters import ad
 from jax._src.interpreters import partial_eval as pe
+from jax._src.interpreters import remat as jax_remat
 from jax._src.lax import control_flow as lcf
 from jax._src.tree_util import tracing_registry
 import jax.extend as jex
@@ -229,6 +230,14 @@ def _sow_batch_rule(batched_args, batch_dims, **params):
 
 batching.primitive_batchers[sow_p] = _sow_batch_rule
 mlir.register_lowering(sow_p, lambda c, *args, **kw: args)
+
+
+def _sow_remat_rule(trace, *vals, **params):
+  del trace
+  return sow_p.bind(*vals, **params), lambda *vals2: list(vals2)
+
+
+jax_remat.rules[sow_p] = _sow_remat_rule
 
 
 def sow(value, *, tag: Hashable, name: str, mode: str = 'strict', key=None):
