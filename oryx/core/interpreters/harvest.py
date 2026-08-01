@@ -645,8 +645,7 @@ class ReapContext(HarvestContext):
         yield outs, (None, None)
 
     fwd, aux2 = _fwd_subtrace(fwd, self)
-    bwd_ = reap_function(bwd, self.settings, True)
-    bwd = reap_wrapper_drop_aux(bwd_)
+    bwd = _reap_custom_vjp_bwd(bwd, self.settings)
     out_flat = primitive.bind_with_trace(
         trace.parent_trace, vals, [jax.typeof(v) for v in vals],
         dict(out_trees=out_trees, symbolic_zeros=symbolic_zeros,
@@ -699,10 +698,14 @@ def reap_wrapper(*args):
 
 
 @lu.transformation
-def reap_wrapper_drop_aux(*args):
-  out, reaps, preds, _ = yield (args,), {}
-  out_flat, _ = tree_util.tree_flatten((out, reaps, preds))
-  yield out_flat
+def _reap_custom_vjp_bwd(settings: HarvestSettings, *args):
+  context = ReapContext(settings, {})
+  with harvest_trace(context):
+    cts_in, logs = yield args, {}
+    reap_values = tree_util.tree_map(lambda x: x.value, context.reaps)
+    pred_values = tree_util.tree_map(lambda x: x.pred, context.reaps)
+  out_flat, _ = tree_util.tree_flatten((cts_in, reap_values, pred_values))
+  yield out_flat, logs
 
 
 def call_and_reap(f,
@@ -861,7 +864,7 @@ def _initial_style_jaxpr(
 def _initial_style_jaxprs_with_common_consts(
     funs: list[Callable[..., Any]],
     in_tree: tree_util.PyTreeDef,
-    in_avals: list[jax_core.AbstractValue | jax_core.AvalQDD],
+    in_avals: list[jax_core.AbstractValue],
     debug_infos: list[jax_core.DebugInfo]):
   in_flat_tree = ft.pack((ft.treedef_args_to_ft(in_tree, in_avals), {}))
   jaxprs_, out_flat_trees = zip(*[pe.trace_to_jaxpr(
