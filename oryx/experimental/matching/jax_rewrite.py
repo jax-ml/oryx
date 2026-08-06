@@ -683,9 +683,14 @@ class CallPrimitive(JaxExpression):
             'oryx.CallPrimitive.evaluate', f, operands, {}
         ),
     )
+    flat_args, in_tree = tree_util.tree_flatten((operands, {}))
+    flat_fun, out_tree = api_util.flatten_fun(fun, in_tree)
+    avals = [jax.typeof(x) for x in flat_args]
+    call_jaxpr, _, () = pe.trace_to_jaxpr_dynamic(flat_fun, avals)
     new_params = dict(self.params)
-    new_params['subfuns'] = (fun,)
-    return self.primitive.bind(*operands, **new_params)  # pylint: disable=not-an-iterable
+    new_params['call_jaxpr'] = call_jaxpr
+    out = self.primitive.bind(*flat_args, **new_params)  # pylint: disable=not-an-iterable
+    return tree_util.tree_unflatten(out_tree(), out)
 
   def __str__(self):
     return f'({self.primitive} {self.expression} {self.operands})'

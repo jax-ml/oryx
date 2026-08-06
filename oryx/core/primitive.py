@@ -17,26 +17,28 @@ import functools
 import itertools as it
 from typing import Callable
 
+import jax
 from jax import api_util
 from jax import tree_util
 from jax._src import core as jax_core
 from jax._src import flattree as ft
 from jax._src import util as jax_util
-from jax._src.interpreters import ad
-from jax._src.interpreters import batching
-from jax._src.interpreters import partial_eval as pe
 import jax.extend as jex
 from jax.extend import linear_util as lu
+from jax.interpreters import ad
+from jax.interpreters import batching
 from jax.interpreters import mlir
+from jax.interpreters import partial_eval as pe
 
 from oryx.core import trace_util
 
 __all__ = [
     'HigherOrderPrimitive',
+    'CallPrimitive',
     'FlatPrimitive',
     'call_bind',
     'tie_all',
-    'tie_in'
+    'tie_in',
 ]
 
 safe_map = jax_core.safe_map
@@ -56,7 +58,14 @@ def register_initial_transformation_rule(name: str,
   initial_transformation_rules[name] = register_func
 
 
-class HigherOrderPrimitive(jax_core.CallPrimitive):
+# pylint: disable=invalid-name
+def CallPrimitive(name: str) -> jax_core.Primitive:
+  """Creates a JAX CallPrimitive with standard call rules registered."""
+  return jex.core.create_call_primitive(name)
+# pylint: enable=invalid-name
+
+
+class HigherOrderPrimitive(jax_core.Primitive):
   """A primitive that appears in traces through transformations.
 
   In JAX, when functions composed of primitives are traced,
@@ -74,29 +83,13 @@ class HigherOrderPrimitive(jax_core.CallPrimitive):
 
   def __init__(self, name):
     super(HigherOrderPrimitive, self).__init__(name)
+    jex.core.register_call_primitive_rules(self, name=name)
     self.multiple_results = True
     for register_func in hop_transformation_rules.values():
       register_func(self)
 
-  def impl(self, f, *args, **params):
-    del params
-    with jax_core.eval_context():
-      return f.call_wrapped(*args)
-
   def subcall(self, name):
     return self.__class__(f'{self.name}/{name}')
-
-
-def hop_transpose_rule(prim):
-
-  def rule(*args, **kwargs):
-    return ad.call_transpose(prim.subcall('transpose'), *args, **kwargs)
-
-  ad.primitive_transposes[prim] = rule
-  return rule
-
-
-register_hop_transformation_rule('transpose', hop_transpose_rule)
 
 
 def hop_lowering(prim):
@@ -174,17 +167,17 @@ def call_bind(prim, **params):
                                                         args, kwargs))
       flat_args, in_tree = tree_util.tree_flatten((args, kwargs))
       flat_fun, out_tree = api_util.flatten_fun(fun, in_tree)
-      out_tree_dest = None
+      avals = [jax.typeof(x) for x in flat_args]
+      call_jaxpr, _, () = pe.trace_to_jaxpr_dynamic(flat_fun, avals)
       out = prim.bind(
           *flat_args,
-          subfuns=(flat_fun,),
+          call_jaxpr=call_jaxpr,
           num_args=len(flat_args),
           name=f.__name__,
           in_tree=in_tree,
-          out_tree=lambda: out_tree_dest,
+          out_tree=out_tree,
           **params)
-      out_tree_dest = out_tree()
-      return tree_util.tree_unflatten(out_tree_dest, out)
+      return tree_util.tree_unflatten(out_tree(), out)
 
     return wrapped
 

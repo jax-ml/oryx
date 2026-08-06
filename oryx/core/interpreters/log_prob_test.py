@@ -12,14 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for oryx.core.interpreters.log_prob."""
+"""Tests for custom primitives with the log_prob interpreter in Oryx."""
 from absl.testing import absltest
 import jax
 from jax import random
 from jax._src import api_util
 from jax._src import core as jax_core
 import jax.extend as jex
-from jax.extend.core import primitives
 from jax.extend import linear_util as lu
 import jax.numpy as jnp
 
@@ -68,19 +67,30 @@ log_prob_rules[random_normal_p] = random_normal_log_prob_rule
 log_prob_registry.add(random_normal_p)
 
 
+call_p = jex.core.create_call_primitive('call')
+
+
 def call(f):
 
   def wrapped(*args, **kwargs):
     fun = lu.wrap_init(f, kwargs)
     flat_args, in_tree = jax.tree_util.tree_flatten(args)
     flat_fun, out_tree = api_util.flatten_fun_nokwargs(fun, in_tree)
-    ans = primitives.call_p.bind(*flat_args, subfuns=(flat_fun,))
+    avals = [jax_core.typeof(v) for v in flat_args]
+    call_jaxpr, _, consts = (
+        jax._src.interpreters.partial_eval.trace_to_jaxpr_dynamic(
+            flat_fun, tuple(avals)
+        )
+    )
+    if consts:
+      flat_args = (*consts, *flat_args)
+    call_jaxpr = jax._src.interpreters.partial_eval.convert_constvars_jaxpr(
+        call_jaxpr
+    )
+    ans = call_p.bind(*flat_args, call_jaxpr=call_jaxpr)
     return jax.tree_util.tree_unflatten(out_tree(), ans)
 
   return wrapped
-
-
-primitives.call_p.call_primitive = True
 
 
 class LogProbTest(test_util.TestCase):

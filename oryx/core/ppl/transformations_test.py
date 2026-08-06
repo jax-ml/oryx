@@ -59,12 +59,11 @@ def random_normal_impl(rng, *, batch_ndims):
   return sample(rng)
 
 
-def random_normal_abstract(key, **_):
-  del key
-  return jax_core.ShapedArray((), jnp.float32)
+def random_normal_abstract(key, *, batch_ndims=0, **_):
+  return jax_core.ShapedArray(key.shape[:batch_ndims], jnp.float32)
 
 
-def random_normal_log_prob_rule(incells, outcells, *, batch_ndims, **_):
+def random_normal_log_prob_rule(incells, outcells, *, batch_ndims=0, **_):
   outcell, = outcells
   if not outcell.top():
     return incells, outcells, None

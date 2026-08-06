@@ -168,6 +168,8 @@ import jax.extend.linear_util as lu
 from jax.interpreters import batching
 from jax.interpreters import mlir
 import jax.numpy as jnp
+from oryx.core import primitive as oryx_primitive
+from oryx.core import trace_util
 
 
 __all__ = [
@@ -318,11 +320,11 @@ def _sow(trace, value, *, tag, name, mode, key=None, pred=None):
   return tree_util.tree_unflatten(in_tree, out_flat)
 
 
-nest_p = jax_core.CallPrimitive('nest')
+nest_p = oryx_primitive.CallPrimitive('nest')
 
 
-def _nest_impl(f, *args, **_):
-  return f.call_wrapped(*args)
+def _nest_impl(*args, call_jaxpr, **_):
+  return jax_core.jaxpr_as_fun(call_jaxpr)(*args)
 
 
 nest_p.def_impl(_nest_impl)
@@ -344,6 +346,17 @@ def _nest_transpose_rule(params, call_jaxpr, args, ct, _):
 
 
 ad.primitive_transposes[nest_p] = _nest_transpose_rule
+pe.dce_rules[nest_p] = pe.dce_jaxpr_call_rule
+
+
+def _trace_to_call_jaxpr(fun, vals):
+  avals = [jax.typeof(v) for v in vals]
+  call_jaxpr, _, consts = pe.trace_to_jaxpr_dynamic(fun, tuple(avals))
+  call_jaxpr = pe.convert_constvars_jaxpr(call_jaxpr)
+  all_vals = (*consts, *vals)
+  used_outputs = [True] * len(call_jaxpr.outvars)
+  call_jaxpr, used_inputs = pe.dce_jaxpr(call_jaxpr, used_outputs)
+  return call_jaxpr, [v for v, u in zip(all_vals, used_inputs) if u]
 
 
 def nest(f, *, scope: str):
@@ -383,11 +396,13 @@ def nest(f, *, scope: str):
     )
     flat_args, in_tree = tree_util.tree_flatten(args)
     flat_fun, out_tree = api_util.flatten_fun_nokwargs(fun, in_tree)
+    call_jaxpr, flat_args = _trace_to_call_jaxpr(flat_fun, flat_args)
     out_flat = nest_p.bind(
         *flat_args,
-        subfuns=(flat_fun,),
+        call_jaxpr=call_jaxpr,
         scope=scope,
-        name=getattr(f, '__name__', '<no name>'))
+        name=getattr(f, '__name__', '<no name>'),
+    )
     return tree_util.tree_unflatten(out_tree(), out_flat)
 
   return wrapped
@@ -410,6 +425,16 @@ class HarvestTrace(jax_core.Trace):
     custom_rule = self.context.get_custom_rule(primitive)
     if custom_rule:
       return custom_rule(self, *vals, **params)
+    call_jaxpr, _ = trace_util.extract_call_jaxpr(primitive, params)
+    if call_jaxpr is not None:
+      params_copy = dict(params)
+      params_copy.pop('call_jaxpr', None)
+      f = lu.wrap_init(jax_core.jaxpr_as_fun(call_jaxpr))
+      if primitive is nest_p:
+        return self.context.process_nest(self, f, *vals, **params_copy)
+      return self.context.process_higher_order_primitive(
+          self, primitive, f, vals, params_copy, False
+      )
     return self.default_process_primitive(primitive, vals, params)
 
   def default_process_primitive(
@@ -554,25 +579,22 @@ class ReapContext(HarvestContext):
   def reap_higher_order_primitive(self, trace, call_primitive, f, vals,
                                   params, is_map):
     """Wraps the inner function with a reap trace."""
-    name = jax_util.wrap_name(params.pop('name', f.__name__), 'reap')
+    params = params.copy()  # don't mutate caller bro
+    name = jax_util.wrap_name(
+        params.pop('name', getattr(f, '__name__', '<no name>')), 'reap'
+    )
     f, aux = reap_eval(f, self.settings)
-
-    if is_map:
-      out_axes_thunk = params['out_axes_thunk']
-
-      @functools.partial(
-          jax_util.HashableFunction, closure=('harvest', out_axes_thunk)
-      )
-      def new_out_axes_thunk():
-        out_axes = out_axes_thunk()
-        assert all(out_axis == 0 for out_axis in out_axes)
-        out_tree, _ = aux()
-        return (0,) * out_tree.num_leaves
-
-      params = dict(params, out_axes_thunk=new_out_axes_thunk)
+    assert not is_map
+    params = {
+        k: v for k, v in params.items() if k not in ('subfuns', 'call_jaxpr')
+    }
+    call_jaxpr, vals = _trace_to_call_jaxpr(f, vals)
     out_flat = call_primitive.bind_with_trace(
-        trace.parent_trace, vals, [jax.typeof(v) for v in vals],
-        dict(params, name=name, subfuns=(f,)))
+        trace.parent_trace,
+        vals,
+        [jax.typeof(v) for v in vals],
+        dict(params, name=name, call_jaxpr=call_jaxpr),
+    )
     out_tree, metadata = aux()
     out_vals, reaps, preds = tree_util.tree_unflatten(out_tree, out_flat)
     return out_vals, reaps, preds, metadata
@@ -1261,6 +1283,36 @@ def _reap_pjit_rule(trace, *invals, **params):
 reap_custom_rules[jex.core.primitives.jit_p] = _reap_pjit_rule
 
 
+def _reap_call_rule(
+    trace, *vals, call_primitive=jax_core.eval_jaxpr_p, **params
+):
+  if 'call_jaxpr' in params:
+    f = lu.wrap_init(jax_core.jaxpr_as_fun(params.pop('call_jaxpr')))
+  else:
+    f, *vals = vals
+  if call_primitive is nest_p:
+    return trace.context.process_nest(trace, f, *vals, **params)
+  return trace.context.process_higher_order_primitive(
+      trace, call_primitive, f, vals, params, False
+  )
+
+
+reap_custom_rules[nest_p] = functools.partial(
+    _reap_call_rule, call_primitive=nest_p
+)
+reap_custom_rules[jax_core.eval_jaxpr_p] = functools.partial(
+    _reap_call_rule, call_primitive=jax_core.eval_jaxpr_p
+)
+if hasattr(jax_core, 'call_p'):
+  reap_custom_rules[jax_core.call_p] = functools.partial(
+      _reap_call_rule, call_primitive=jax_core.call_p
+  )
+if hasattr(jax_core, 'closed_call_p'):
+  reap_custom_rules[jax_core.closed_call_p] = functools.partial(
+      _reap_call_rule, call_primitive=jax_core.closed_call_p
+  )
+
+
 plant_custom_rules = {}
 
 
@@ -1296,13 +1348,10 @@ class PlantContext(HarvestContext):
   def process_higher_order_primitive(self, trace, call_primitive, f, vals,
                                      params, is_map):
     del is_map
-    name = jax_util.wrap_name(params.pop('name', f.__name__), 'reap')
+    name = jax_util.wrap_name(
+        params.pop('name', getattr(f, '__name__', '<no name>')), 'reap'
+    )
     plants = trace.context.plants
-    if 'in_axes' in params:
-      # TODO(b/199459308): figure out if invars are mapped or unmapped
-      params = dict(
-          params,
-          in_axes=(0,) * len(tree_util.tree_leaves(plants)) + params['in_axes'])
     if 'donated_invars' in params:
       params = dict(params)
       params['donated_invars'] = (
@@ -1310,11 +1359,18 @@ class PlantContext(HarvestContext):
           params['donated_invars'])
     elif call_primitive is nest_p:
       plants = plants.get(params['scope'], {})
+    params = {
+        k: v for k, v in params.items() if k not in ('subfuns', 'call_jaxpr')
+    }
     all_vals, all_tree = tree_util.tree_flatten((plants, vals))
     f = plant_eval(f, self.settings, all_tree)
+    call_jaxpr, all_vals = _trace_to_call_jaxpr(f, all_vals)
     return call_primitive.bind_with_trace(
-        trace.parent_trace, all_vals, [jax.typeof(v) for v in all_vals],
-        dict(name=name, subfuns=(f,), **params))
+        trace.parent_trace,
+        all_vals,
+        [jax.typeof(v) for v in all_vals],
+        dict(name=name, call_jaxpr=call_jaxpr, **params),
+    )
 
   def process_custom_jvp_call(self, trace, primitive, fun, jvp, vals, *,
                               symbolic_zeros):
@@ -1725,6 +1781,36 @@ def _plant_pjit_rule(trace, *invals, **params):
 
 
 plant_custom_rules[jex.core.primitives.jit_p] = _plant_pjit_rule
+
+
+def _plant_call_rule(
+    trace, *vals, call_primitive=jax_core.eval_jaxpr_p, **params
+):
+  if 'call_jaxpr' in params:
+    f = lu.wrap_init(jax_core.jaxpr_as_fun(params.pop('call_jaxpr')))
+  else:
+    f, *vals = vals
+  if call_primitive is nest_p:
+    return trace.context.process_nest(trace, f, *vals, **params)
+  return trace.context.process_higher_order_primitive(
+      trace, call_primitive, f, vals, params, False
+  )
+
+
+plant_custom_rules[nest_p] = functools.partial(
+    _plant_call_rule, call_primitive=nest_p
+)
+plant_custom_rules[jax_core.eval_jaxpr_p] = functools.partial(
+    _plant_call_rule, call_primitive=jax_core.eval_jaxpr_p
+)
+if hasattr(jax_core, 'call_p'):
+  plant_custom_rules[jax_core.call_p] = functools.partial(
+      _plant_call_rule, call_primitive=jax_core.call_p
+  )
+if hasattr(jax_core, 'closed_call_p'):
+  plant_custom_rules[jax_core.closed_call_p] = functools.partial(
+      _plant_call_rule, call_primitive=jax_core.closed_call_p
+  )
 
 
 def harvest(f,

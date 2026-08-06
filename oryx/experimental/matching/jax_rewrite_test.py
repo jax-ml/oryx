@@ -17,7 +17,7 @@
 from absl.testing import absltest
 import jax
 from jax import lax
-from jax.extend.core import primitives
+import jax.extend as jex
 import jax.numpy as jnp
 from oryx.experimental.matching import jax_rewrite as jr
 from oryx.experimental.matching import matcher
@@ -27,6 +27,7 @@ from oryx.internal import test_util
 
 Exp = lambda x: jr.Primitive(lax.exp_p, (x,), jr.Params(accuracy=None))
 Log = lambda x: jr.Primitive(lax.log_p, (x,), jr.Params(accuracy=None))
+call_p = jex.core.create_call_primitive('call')
 
 
 class JaxExpressionTest(test_util.TestCase):
@@ -79,22 +80,22 @@ class JaxExpressionTest(test_util.TestCase):
   def test_call_primitive_should_include_call_in_trace(self):
     exp_expr = Exp(jr.Literal(0.))
     call_expr = jr.CallPrimitive(
-        primitives.call_p, (), (exp_expr,), jr.Params(), []
+        call_p, (), (exp_expr,), jr.Params(), []
     )
     jaxpr = jax.make_jaxpr(lambda: jr.evaluate(call_expr, {}))()
-    self.assertEqual(jaxpr.jaxpr.eqns[0].primitive, primitives.call_p)
+    self.assertEqual(jaxpr.jaxpr.eqns[0].primitive, call_p)
 
   def test_call_primitive_shape_and_dtype_are_multi_part(self):
     exp_expr = Exp(jr.Literal(0.))
     call_expr = jr.CallPrimitive(
-        primitives.call_p, (), (exp_expr,), jr.Params(), []
+        call_p, (), (exp_expr,), jr.Params(), []
     )
     self.assertTupleEqual(call_expr.shape, ((),))
     self.assertEqual(call_expr.dtype, (jnp.float32,))
 
   def test_part_infers_correct_shape_dtype(self):
     call_expr = jr.CallPrimitive(
-        primitives.call_p, (), (jr.Literal(0.0), jr.Literal(1)), jr.Params(), []
+        call_p, (), (jr.Literal(0.0), jr.Literal(1)), jr.Params(), []
     )
     p0_expr = jr.Part(call_expr, 0)
     p1_expr = jr.Part(call_expr, 1)
@@ -154,12 +155,12 @@ class MatchingTest(test_util.TestCase):
         matcher.Var('prim'), matcher.Var('args'), matcher.Var('expression'),
         matcher.Var('params'), matcher.Var('names'))
     expr = jr.CallPrimitive(
-        primitives.call_p, (), (jr.Literal(0.0), jr.Literal(1)), jr.Params(), []
+        call_p, (), (jr.Literal(0.0), jr.Literal(1)), jr.Params(), []
     )
     self.assertDictEqual(
         matcher.match(pattern, expr),
         dict(
-            prim=primitives.call_p,
+            prim=call_p,
             args=(),
             expression=(jr.Literal(0.0), jr.Literal(1.0)),
             params=jr.Params(),

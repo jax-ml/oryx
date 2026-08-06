@@ -211,12 +211,12 @@ def eval_jaxpr_with_state(jaxpr: jex.core.Jaxpr, rules: Rules,
   return jax_util.safe_map(env.read, jaxpr.outvars), state
 
 
-def default_call_interpreter_rule(primitive: jax_core.CallPrimitive,
+def default_call_interpreter_rule(primitive: jax_core.Primitive,
                                   rules: Rules, state: Value,
                                   invals: Sequence[Value],
                                   call_jaxpr: jex.core.Jaxpr,
                                   **params: Any) -> Tuple[Value, Value]:
-  """Handles simple call primitives like `jax_core.call_p`.
+  """Handles simple call primitives like `jax_core.eval_jaxpr_p`.
 
   When evaluating call primitives, the input `state` needs to be an additional
   input to the call primitive and it also needs to return an additional output
@@ -226,7 +226,7 @@ def default_call_interpreter_rule(primitive: jax_core.CallPrimitive,
   call primitive.
 
   Args:
-    primitive: A `jax_core.CallPrimitive` such as `jax_core.call_p`.
+    primitive: A `jax_core.Primitive` such as `jax_core.eval_jaxpr_p`.
     rules: A `dict` that maps JAX primitives to functions that take in `(state,
       *args)` and return `(output, new_state)`.
     state: The interpreter `state` value at the time of calling evaluating the
@@ -310,7 +310,7 @@ def make_effect_handler(
 
   Args:
     handlers: A `dict` that maps JAX primitives to callback functions that take
-      in `(state, *args)` and return `(output, new_state)`. When running the the
+      in `(state, *args)` and return `(output, new_state)`. When running the
       transformed function, the execution of primitives in `handlers` will be
       delegated to the callback functions rather than their default execution
       rules.

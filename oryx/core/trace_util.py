@@ -91,11 +91,11 @@ def trees(f):
 
 
 def extract_call_jaxpr(primitive, params):
-  if not primitive.call_primitive:
-    return None, params
-  else:
+  del primitive
+  if 'call_jaxpr' in params:
     params = dict(params)
     return params.pop('call_jaxpr'), params
+  return None, params
 
 
 class _ThreadLocalState(threading.local):

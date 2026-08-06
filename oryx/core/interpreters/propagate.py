@@ -36,11 +36,9 @@ from jax import api_util
 from jax import tree_util
 from jax._src import core as jax_core
 from jax._src import sharding_impls
+from jax._src.interpreters import partial_eval as pe
 import jax.extend as jex
 from jax.extend import linear_util as lu
-from jax.extend.core import primitives
-from jax.interpreters import partial_eval as pe
-
 from oryx.core import pytree
 from oryx.core import trace_util
 from oryx.core.interpreters import harvest
@@ -303,10 +301,12 @@ def propagate(cell_type: Type[Cell],
                                 reducer=reducer),
               debug_info=call_jaxpr.debug_info)
       ]
-      if eqn.primitive not in rules:
-        rule = default_call_rules.get(eqn.primitive)
-      else:
+      if eqn.primitive in default_call_rules:
+        rule = default_call_rules[eqn.primitive]
+      elif eqn.primitive in rules:
         rule = rules[eqn.primitive]
+      else:
+        rule = functools.partial(call_rule, eqn.primitive)
     elif eqn.primitive is jex.core.primitives.jit_p:
       subfuns = [
           lu.wrap_init(
@@ -346,6 +346,14 @@ def flat_propagate(tree, *flat_invals):
   yield flat_out, out_tree
 
 
+def _trace_to_call_jaxpr(fun, vals):
+  avals = [jax_core.typeof(v) for v in vals]
+  call_jaxpr, _, consts = pe.trace_to_jaxpr_dynamic(fun, tuple(avals))
+  all_vals = (*consts, *vals)
+  call_jaxpr = pe.convert_constvars_jaxpr(call_jaxpr)
+  return call_jaxpr, all_vals
+
+
 def call_rule(prim, incells, outcells, **params):
   """Propagate rule for call primitives."""
   f, incells = incells[0], incells[1:]
@@ -354,15 +362,18 @@ def call_rule(prim, incells, outcells, **params):
   if 'donated_invars' in params:
     new_params['donated_invars'] = (False,) * len(flat_vals)
   f, aux = flat_propagate(f, in_tree)
-  new_params['subfuns'] = (f,)
+  new_params.pop('subfuns', None)
+  new_params.pop('call_jaxpr', None)
+  call_jaxpr, flat_vals = _trace_to_call_jaxpr(f, flat_vals)
+  new_params['call_jaxpr'] = call_jaxpr
   flat_out = prim.bind(*flat_vals, **new_params)
   out_tree = aux()
   return tree_util.tree_unflatten(out_tree, flat_out)
 
 
 default_call_rules = {}
-default_call_rules[primitives.call_p] = functools.partial(call_rule,
-                                                          primitives.call_p)
+default_call_rules[pe.eval_jaxpr_p] = functools.partial(call_rule,
+                                                        pe.eval_jaxpr_p)
 default_call_rules[harvest.nest_p] = functools.partial(call_rule,
                                                        harvest.nest_p)
 
