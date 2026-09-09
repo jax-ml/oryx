@@ -296,7 +296,7 @@ def propagate(cell_type: Type[Cell],
     if call_jaxpr:
       subfuns = [
           lu.wrap_init(
-              functools.partial(propagate, cell_type, rules, call_jaxpr, (),
+              functools.partial(propagate, cell_type, rules, call_jaxpr, (),  # pyrefly: ignore[bad-argument-type]
                                 initial_state=initial_state,
                                 reducer=reducer),
               debug_info=call_jaxpr.debug_info)
@@ -311,7 +311,7 @@ def propagate(cell_type: Type[Cell],
       subfuns = [
           lu.wrap_init(
               functools.partial(propagate, cell_type, rules,
-                                eqn.params['jaxpr'].jaxpr, (),
+                                eqn.params['jaxpr'].jaxpr, (),  # pyrefly: ignore[bad-argument-type]
                                 initial_state=initial_state,
                                 reducer=reducer),
               debug_info=eqn.params['jaxpr'].jaxpr.debug_info)
