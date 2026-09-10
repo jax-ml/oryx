@@ -67,7 +67,7 @@ log_prob_rules[random_normal_p] = random_normal_log_prob_rule
 log_prob_registry.add(random_normal_p)
 
 
-call_p = jex.core.create_call_primitive('call')
+call_p = jex.core.create_call_primitive('call', False)
 
 
 def call(f):

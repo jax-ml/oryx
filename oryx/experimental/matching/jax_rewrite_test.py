@@ -27,7 +27,7 @@ from oryx.internal import test_util
 
 Exp = lambda x: jr.Primitive(lax.exp_p, (x,), jr.Params(accuracy=None))
 Log = lambda x: jr.Primitive(lax.log_p, (x,), jr.Params(accuracy=None))
-call_p = jex.core.create_call_primitive('call')
+call_p = jex.core.create_call_primitive('call', False)
 
 
 class JaxExpressionTest(test_util.TestCase):

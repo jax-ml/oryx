@@ -61,7 +61,7 @@ def register_initial_transformation_rule(name: str,
 # pylint: disable=invalid-name
 def CallPrimitive(name: str) -> jax_core.Primitive:
   """Creates a JAX CallPrimitive with standard call rules registered."""
-  return jex.core.create_call_primitive(name)
+  return jex.core.create_call_primitive(name, False)
 # pylint: enable=invalid-name
 
 
@@ -83,7 +83,8 @@ class HigherOrderPrimitive(jax_core.Primitive):
 
   def __init__(self, name):
     super(HigherOrderPrimitive, self).__init__(name)
-    jex.core.register_call_primitive_rules(self, name=name)
+    jex.core.register_call_primitive_rules(self, name=name,
+                                           inline_jax_late=False)
     self.multiple_results = True
     for register_func in hop_transformation_rules.values():
       register_func(self)
