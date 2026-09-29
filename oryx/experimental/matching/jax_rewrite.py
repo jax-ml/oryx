@@ -783,12 +783,12 @@ def jaxpr_to_expressions(jaxpr: jex.core.Jaxpr) -> Tuple[Expr, ...]:
     env[str(var)] = val
 
   const_patterns = jax_util.safe_map(
-      lambda var: JaxVar(str(var), var.aval.shape, var.aval.dtype),
+      lambda var: JaxVar(str(var), var.aval.shape, var.aval.dtype),  # pyrefly: ignore[missing-attribute]
       jaxpr.constvars)
   jax_util.safe_map(write_env, jaxpr.constvars, const_patterns)
 
   in_patterns = jax_util.safe_map(
-      lambda var: JaxVar(str(var), var.aval.shape, var.aval.dtype),
+      lambda var: JaxVar(str(var), var.aval.shape, var.aval.dtype),  # pyrefly: ignore[missing-attribute]
       jaxpr.invars)
   jax_util.safe_map(write_env, jaxpr.invars, in_patterns)
   for eqn in jaxpr.eqns:
