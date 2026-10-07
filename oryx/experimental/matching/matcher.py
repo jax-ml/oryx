@@ -496,7 +496,7 @@ class Star(Pattern):
           new_bindings = dict(new_bindings, **{k: v})
       yield from self.accumulate_match(rest, new_bindings, succeed)
 
-  def match(self, expr: Expr, bindings: Bindings,  # pytype: disable=signature-mismatch
+  def match(self, expr: Expr, bindings: Bindings,  # pyrefly: ignore[bad-override]
             succeed: StarContinuation) -> Success:
     """Matches the `Star` pattern against an expression.
 
@@ -639,7 +639,7 @@ def sequence_matcher(pattern: Sequence[Any]):
         yield from post_star_match(remaining, bindings, succeed)
 
       star_match = matcher(star_pattern)
-      yield from star_match(expr, bindings, star_succeed)  # pytype: disable=wrong-arg-types
+      yield from star_match(expr, bindings, star_succeed)  # pyrefly: ignore[bad-argument-type]
       return
 
     if not expr:

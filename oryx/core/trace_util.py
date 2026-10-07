@@ -52,7 +52,7 @@ def pv_like(x, abstract=True):
   if abstract:
     return pe.PartialVal.unknown(get_shaped_aval(x))
   else:
-    return pe.PartialVal((None, x))  # pytype: disable=wrong-arg-types
+    return pe.PartialVal((None, x))
 
 
 def stage(f, dynamic=True):

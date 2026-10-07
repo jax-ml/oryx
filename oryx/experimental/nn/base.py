@@ -361,7 +361,7 @@ class Template(object):
     return self.cls.spec(*it.chain(specs, self.init_args), **self.init_kwargs)
 
   def compose(self, template):
-    from oryx.experimental.nn import Serial  # pylint: disable=g-import-not-at-top,import-outside-toplevel #  pytype: disable=import-error
+    from oryx.experimental.nn import Serial  # pylint: disable=g-import-not-at-top,import-outside-toplevel  # pyrefly: ignore[missing-module-attribute]
     return Serial([self, template])
 
   def __rshift__(self, template):

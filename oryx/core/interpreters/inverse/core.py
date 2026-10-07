@@ -168,7 +168,7 @@ def inverse_and_ildj(f, *trace_args, reduce_ildj=True):
     flat_incells = [InverseAndILDJ.unknown(aval) for aval in flat_forward_avals]
     flat_outcells = safe_map(InverseAndILDJ.new, flat_args)
     env, _ = propagate.propagate(InverseAndILDJ, ildj_registry, jaxpr.jaxpr,  # pyrefly: ignore[bad-argument-type]
-                                 flat_constcells, flat_incells, flat_outcells)  # pytype: disable=wrong-arg-types
+                                 flat_constcells, flat_incells, flat_outcells)
     flat_incells = [env.read(invar) for invar in jaxpr.jaxpr.invars]
     if any(not flat_incell.top() for flat_incell in flat_incells):
       raise ValueError('Cannot invert function.')
@@ -298,7 +298,7 @@ def initial_ildj(incells, outcells, *, jaxpr, num_consts, **_):
   const_cells, incells = jax_util.split_list(incells, [num_consts])
   env, state = propagate.propagate(
       InverseAndILDJ, ildj_registry, jaxpr, const_cells,  # pyrefly: ignore[bad-argument-type]
-      incells, outcells)  # pytype: disable=wrong-arg-types
+      incells, outcells)
   new_incells = [env.read(invar) for invar in jaxpr.invars]
   new_outcells = [env.read(outvar) for outvar in jaxpr.outvars]
   return const_cells + new_incells, new_outcells, state
