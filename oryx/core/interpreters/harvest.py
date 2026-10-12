@@ -876,7 +876,7 @@ def _initial_style_jaxpr(
     in_tree: tree_util.PyTreeDef,
     in_avals: list[jax_core.AbstractValue],
     debug_info: jax_core.DebugInfo,
-) -> tuple[jax_core.ClosedJaxpr, list[Any], tree_util.PyTreeDef]:
+) -> tuple[jax_core.Jaxpr, list[Any], tree_util.PyTreeDef]:
   in_flat_tree = ft.pack((ft.treedef_args_to_ft(in_tree, in_avals), {}))
   jaxpr, out_flat_tree = pe.trace_to_jaxpr(fun, in_flat_tree, debug_info)
   jaxpr_no_constvars, consts = pe.separate_consts(jaxpr)
