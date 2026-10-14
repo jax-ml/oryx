@@ -153,6 +153,9 @@ class FlatPrimitive(jex.core.Primitive):
 
     mlir.register_lowering(self, _mlir)
 
+  def to_lojax(self, *args, **params):
+    return self.impl(*args, **params)
+
 
 def call_bind(prim, **params):
   """Binds a primitive to a function call."""
